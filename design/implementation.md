@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Implementation Notes & Best Practices
 
 ## Base Currency Setup Implementation
@@ -12,9 +14,8 @@
    - Currency symbol preview
 
 2. **Initialize Settings with Base Currency**
-   - Save selected currency to `settings.json` as `defaultCurrency`
-   - Create initial `currencies.csv` with base currency entry (ratio 1.0)
-   - Set current month's exchange rate for base currency
+   - Persist selected currency in database as the profile's base currency (`currencies` with `is_base=true`, ratio 1.0)
+   - Set current month's exchange rate for base currency (1.0)
    - Store in AppContext for global access
 
 3. **Update Currency Management UI**
@@ -26,7 +27,7 @@
 
 ### Conversion Function Updates
 1. **Update all conversion utilities to use base currency**
-   - Replace hardcoded USD with `settings.defaultCurrency`
+   - Replace hardcoded USD with user's selected base currency
    - Pass `baseCurrency` parameter to conversion functions
    - Update function names: `convertToUSD` → `convertToBaseCurrency`
 
@@ -37,7 +38,7 @@
 
 3. **Update statistics calculations**
    - Use base currency for intermediate conversions
-   - Display currency clearly in labels ("relative to USD", etc.)
+   - Display currency clearly in labels ("relative to base", etc.)
    - Allow viewing in any available currency
 
 ### Settings Management
@@ -51,15 +52,15 @@
 
 ### Phase 1: Core Transaction Management
 1. **Create unified transaction data model and TypeScript interfaces**
-   - `TransactionRecord` interface with `transactionType` field
-   - CSV helper functions for reading/writing unified format
-   - Migration utility to convert old separate files (if needed)
+   - Database entities/interfaces reflecting the SQL schema
+   - Service layer functions for CRUD with parameterized queries
+   - Migration scripts as needed
 
 2. **Implement Create Transaction Page (`/transactions/create`)**
    - Transaction type toggle/tabs component (Expense/Income)
    - Dynamic tag filtering based on selected type
    - Form validation and submission logic
-   - Save to `transactions-YYYY-MM.csv` with appropriate `transactionType`
+   - Save to database with appropriate `transactionType`
    - Recent transactions display with type indicators
 
 3. **Implement View Transactions Page (`/transactions/view`)**
@@ -72,7 +73,7 @@
 ### Phase 2: Enhanced Features
 1. **Add edit functionality to View Transactions**
    - Inline editing or modal form
-   - Update CSV file on save
+   - Persist changes to database on save
    - Validation and error handling
 
 2. **Implement advanced filtering**
@@ -139,14 +140,16 @@ export function GlobalProgressBar() {
 
 ### Usage in API Calls
 ```typescript
-// Wrap all external API calls with loading context
-async function fetchFromGoogleDrive(fileId: string) {
+// Wrap all API calls with loading context
+async function fetchTransactions(params: { profileId: string; from?: string; to?: string }) {
   const { startLoading, stopLoading } = useLoading();
   
   try {
     startLoading(); // Show global progress bar
-    const response = await drive.files.get({ fileId });
-    return response.data;
+    const query = new URLSearchParams(params as any).toString();
+    const response = await fetch(`/api/transactions?${query}`, { credentials: 'include' });
+    if (!response.ok) throw new Error('Failed to fetch');
+    return await response.json();
   } finally {
     stopLoading(); // Hide global progress bar
   }
@@ -154,10 +157,9 @@ async function fetchFromGoogleDrive(fileId: string) {
 ```
 
 ### Integration Points
-- All Google Drive API calls (read, write, delete, list files)
-- Google OAuth authentication requests
-- Any other external API calls
-- File upload/download operations
+- All server API calls
+- Authentication requests (register, login, logout)
+- Data export/import operations (optional)
 - Settings initialization
 
 ## Best Practices
@@ -167,15 +169,14 @@ async function fetchFromGoogleDrive(fileId: string) {
 - Keep user's base currency with ratio 1.0 as immutable (cannot be deleted or modified)
 - Prevent deletion of currencies that are in use for a month
 - Validate positive decimal values for exchange ratios
-- Ensure base currency is set during initial setup and stored in settings
+- Ensure base currency is set during initial setup and stored in DB
 - All exchange rates must be relative to the base currency
-- Ensure all file operations use the active profile's folder ID
 - Prevent deletion of the active profile
 - Validate profile names are unique when creating new profiles
 
 ### Performance
 - Only load relevant month's currencies for transaction forms when the user picks the date
-- Global progress bar uses request counting to handle concurrent external calls efficiently
+- Global progress bar uses request counting to handle concurrent calls efficiently
 
 ### User Experience
 - Pre-select user's base/default currency in transaction forms
@@ -185,14 +186,11 @@ async function fetchFromGoogleDrive(fileId: string) {
 - Use consistent currency formatting throughout app
 - Show currency symbols where appropriate ($ £ € ¥)
 - Explain base currency concept during first-time setup with clear, simple language
-- Global progress bar provides consistent feedback for all external operations without cluttering the UI
-- Display active profile name and photo prominently in the dashboard
-- Make profile switching intuitive and easily accessible with visual profile avatars
+- Global progress bar provides consistent feedback for API operations without cluttering the UI
+- Display active profile name prominently in the dashboard
+- Make profile switching intuitive and easily accessible
 - Provide clear explanations about profile separation during setup
 - Show confirmation dialogs when deleting profiles to prevent accidental data loss
-- Support common image formats for profile photos (JPG, PNG, GIF, WebP)
-- Provide image cropping/resizing functionality for profile photos
-- Display profile avatars consistently throughout the app (circular format)
 
 ## Key Design Decisions
 

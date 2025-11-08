@@ -1,179 +1,214 @@
-# Data Models
+[← Back to README](README.md)
 
-## CSV File Structures
+# Data Models (PostgreSQL)
 
-### 1. Transaction Records: `transactions-YYYY-MM.csv`
-```csv
-date,transactionType,amount,description,tag,currency
-2025-11-01,expense,45.50,Grocery shopping,Food,USD
-2025-11-02,expense,120.00,Electric bill,Utilities,USD
-2025-11-03,expense,15.75,Coffee shop,Food,GBP
-2025-11-01,income,3000.00,Monthly salary,Salary,USD
-2025-11-15,income,500.00,Freelance project,Freelance,EUR
+## SQL Schema (Core)
+
+### users
+```sql
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  email text unique not null,
+  password_hash text not null,
+  email_verified_at timestamptz null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 ```
 
-**Fields:**
-- `date`: ISO date format (YYYY-MM-DD)
-- `transactionType`: "expense" or "income"
-- `amount`: Decimal number (e.g., 45.50)
-- `description`: Text description of transaction
-- `tag`: Category tag from tags.csv
-- `currency`: Currency code from currencies.csv
-
-### 2. Tags Configuration: `tags.csv`
-```csv
-type,name,color
-expense,Food,#FF6B6B
-expense,Utilities,#4ECDC4
-expense,Transportation,#45B7D1
-expense,Entertainment,#FFA07A
-expense,Healthcare,#98D8C8
-income,Salary,#6BCF7F
-income,Freelance,#F7DC6F
-income,Investment,#BB8FCE
+### profiles
+```sql
+create table if not exists profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 ```
 
-**Fields:**
-- `type`: "expense" or "income"
-- `name`: Tag name
-- `color`: Hex color code for visualization
-
-### 3. Currencies Configuration: `currencies.csv`
-```csv
-currencyName,year,month,ratio
-USD,2025,11,1.0
-GBP,2025,11,0.79
-EUR,2025,11,0.92
-JPY,2025,11,149.50
-USD,2025,10,1.0
-GBP,2025,10,0.78
-EUR,2025,10,0.93
+### transactions
+```sql
+create table if not exists transactions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  occurred_at date not null,
+  amount_minor bigint not null,
+  currency text not null,
+  type text not null check (type in ('expense','income')),
+  note text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 ```
 
-**Fields:**
-- `currencyName`: Currency code (e.g., USD, GBP, EUR, JPY)
-- `year`: Year for which this exchange rate applies
-- `month`: Month (1-12) for which this exchange rate applies
-- `ratio`: Exchange rate relative to 1 USD (e.g., 0.79 means 1 USD = 0.79 GBP)
-
-**Notes:**
-- Exchange rates are tracked per month to support historical accuracy
-- The ratio represents how much of that currency equals 1 USD
-- For USD, the ratio is always 1.0
-- To convert from any currency to USD: amount / ratio
-- To convert from USD to any currency: amount * ratio
-
-### 4. App Settings: `settings.json`
-```json
-{
-  "folderId": "google-drive-folder-id",
-  "defaultCurrency": "USD",
-  "dateFormat": "MM/DD/YYYY",
-  "initialized": true,
-  "profilesContainerFolderId": "google-drive-profiles-folder-id", 
-  "backupFolderId": "google-drive-backup-root-folder-id",
-  "profiles": [
-    {
-      "id": "profile-uuid-1",
-      "name": "Personal",
-      "folderId": "google-drive-profile-folder-id-1",
-      "photoFileId": "google-drive-photo-file-id-1"
-    },
-    {
-      "id": "profile-uuid-2",
-      "name": "Business",
-      "folderId": "google-drive-profile-folder-id-2",
-      "photoFileId": "google-drive-photo-file-id-2"
-    }
-  ],
-  "activeProfileId": "profile-uuid-1"
-}
+### tags
+```sql
+create table if not exists tags (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  constraint uq_tag unique (profile_id, name)
+);
 ```
 
-**Fields:**
-- `folderId`: Google Drive folder ID where profile folders are stored
-- `defaultCurrency`: User's base currency code (selected during setup, used as default for transactions and conversions)
-- `dateFormat`: Preferred date display format
-- `initialized`: Boolean indicating if first-time setup is complete
-- `profiles`: Array of profile objects, each containing:
-  - `id`: Unique identifier for the profile
-  - `name`: User-defined profile name
-  - `folderId`: Google Drive folder ID where this profile's CSV files are stored
-  - `photoFileId`: Google Drive file ID for the profile photo (optional)
-- `activeProfileId`: ID of the currently selected profile
+### transaction_tags
+```sql
+create table if not exists transaction_tags (
+  transaction_id uuid not null references transactions(id) on delete cascade,
+  tag_id uuid not null references tags(id) on delete cascade,
+  primary key (transaction_id, tag_id)
+);
+```
+
+### currencies
+```sql
+create table if not exists currencies (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  code text not null,
+  is_base boolean not null default false,
+  constraint uq_currency unique (profile_id, code)
+);
+```
 
 ## TypeScript Interfaces
 
 ```typescript
-interface TransactionRecord {
-  date: string; // ISO date string
-  transactionType: 'expense' | 'income';
-  amount: number;
-  description: string;
-  tag: string;
-  currency: string; // Currency code (e.g., USD, GBP, EUR)
-}
-
-interface Tag {
-  type: 'expense' | 'income';
-  name: string;
-  color: string;
-}
-
-interface CurrencyRecord {
-  currencyName: string; // Currency code (USD, GBP, EUR, etc.)
-  year: number;
-  month: number;
-  ratio: number; // Exchange rate relative to 1 USD
-}
-
-interface Profile {
+export interface User {
   id: string;
+  email: string;
+  passwordHash: string;
+  emailVerifiedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Profile {
+  id: string;
+  userId: string;
   name: string;
-  folderId: string;
-  photoFileId?: string; // Google Drive file ID for profile photo
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface AppSettings {
-  folderId: string;
-  defaultCurrency?: string;
-  dateFormat?: string;
-  initialized: boolean;
-  profilesContainerFolderId?: string; // Drive folder for Profiles/
-  backupFolderId?: string; // Drive folder for backup/
-  profiles: Profile[];
-  activeProfileId: string;
-}
+export type TransactionType = 'expense' | 'income';
 
-interface MonthlyData {
-  year: number;
-  month: number;
-  transactions: TransactionRecord[];
-  expenses: TransactionRecord[]; // Filtered transactions where transactionType === 'expense'
-  incomes: TransactionRecord[]; // Filtered transactions where transactionType === 'income'
-  totalExpense: number; // In default currency
-  totalIncome: number; // In default currency
-  availableCurrencies: string[]; // Currencies used in this month
-}
-
-interface Statistics {
-  year: number;
-  month: number;
-  displayCurrency: string; // Currency to display statistics in
-  expensesByTag: Record<string, number>; // Converted to display currency
-  totalExpense: number; // Converted to display currency
-  totalIncome: number; // Converted to display currency
-  ratio: number; // expense/income ratio
-  exchangeRates: Record<string, number>; // Available exchange rates for the month
-}
-
-interface BackupEntry {
+export interface Transaction {
+  id: string;
   profileId: string;
-  profileName: string;
-  timestamp: string; // e.g., 2025-11-05T14-30-22Z
-  snapshotFolderId: string;
-  totalFiles?: number;
-  totalBytes?: number;
+  occurredAt: string; // YYYY-MM-DD
+  amountMinor: number; // integer minor units
+  currency: string;
+  type: TransactionType;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Tag {
+  id: string;
+  profileId: string;
+  name: string;
+}
+
+export interface Currency {
+  id: string;
+  profileId: string;
+  code: string;
+  isBase: boolean;
+}
+```
+
+## Prisma Schema
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  passwordHash     String
+  emailVerifiedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now())
+  profiles         Profile[]
+
+  @@map("users")
+}
+
+model Profile {
+  id         String        @id @default(uuid())
+  userId     String
+  name       String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  tags       Tag[]
+  currencies Currency[]
+
+  @@map("profiles")
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  profileId   String
+  occurredAt  DateTime
+  amountMinor BigInt
+  currency    String
+  type        TransactionType
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  tags        TransactionTag[]
+
+  @@map("transactions")
+}
+
+enum TransactionType {
+  expense
+  income
+}
+
+model Tag {
+  id        String    @id @default(uuid())
+  profileId String
+  name      String
+  profile   Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  trxs      TransactionTag[]
+
+  @@unique([profileId, name], name: "profileId_name")
+  @@map("tags")
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  @@map("transaction_tags")
+}
+
+model Currency {
+  id        String  @id @default(uuid())
+  profileId String
+  code      String
+  isBase    Boolean @default(false)
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, code], name: "profileId_code")
+  @@map("currencies")
 }
 ```
 

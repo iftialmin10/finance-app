@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Application Architecture
 
 ## High-Level Architecture
@@ -7,11 +9,11 @@
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │          Next.js App (React + TypeScript)              │ │
 │  │  ┌──────────────────────────────────────────────────┐  │ │
-│  │  │ Global Progress Bar (for external API calls)     │  │ │
+│  │  │ Global Progress Bar (for API calls)              │  │ │
 │  │  └──────────────────────────────────────────────────┘  │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │ │
 │  │  │   UI Layer   │  │  State Mgmt  │  │  Auth Layer  │ │ │
-│  │  │   (MUI)      │  │  (Context)   │  │ (NextAuth)   │ │ │
+│  │  │   (MUI)      │  │  (Context)   │  │ (Credentials)│ │ │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘ │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
@@ -19,17 +21,16 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                   Next.js API Routes                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │  Auth API    │  │  Drive API   │  │  CSV Parser  │     │
-│  │              │  │  Backup Svc  │  │              │     │
+│  │  Auth API    │  │  Domain APIs │  │  Services    │     │
+│  │              │  │  (CRUD)      │  │  (Reports)   │     │
 │  └──────────────┘  └──────────────┘  └──────────────┘     │
 └─────────────────────────────────────────────────────────────┘
-                              ↕ Google APIs
-                   (triggers Global Progress Bar)
+                              ↕
 ┌─────────────────────────────────────────────────────────────┐
-│                      Google Cloud Platform                   │
+│                      Data & Infrastructure                  │
 │  ┌────────────────────────┐  ┌──────────────────────────┐  │
-│  │  Google OAuth 2.0      │  │   Google Drive API       │  │
-│  │  (Authentication)      │  │   (CSV File Storage)     │  │
+│  │   Auth & Sessions      │  │  PostgreSQL (Neon)       │  │
+│  │ (Credentials + Cookies)│  │  (Primary Data Store)    │  │
 │  └────────────────────────┘  └──────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -41,54 +42,40 @@
 - **Language**: TypeScript
 - **UI Library**: Material-UI (MUI) v5
 - **State Management**: React Context API
-- **Authentication**: NextAuth.js
+- **Authentication**: Credentials (email + password) with HTTP-only session cookie
 - **Charts**: Recharts
 
 ### Backend
 - **Runtime**: Node.js
 - **API**: Next.js API Routes
-- **Storage**: Google Drive API
-- **Data Format**: CSV files
+- **Storage**: PostgreSQL (Neon)
+- **Data Format**: Normalized relational schema
 
 ### Deployment
 - **Container**: Docker
-- **Platform**: Google Cloud Run
+- **Platform**: Cloud hosting of choice
 - **PWA**: Progressive Web App with Service Worker
 - **Mobile**: Bubblewrap for Android packaging
 
 ## Key Architectural Decisions
 
-1. **CSV-Based Storage**: Simple, portable, human-readable format stored directly in user's Google Drive
-2. **Stateless Design**: No application-side database; all data in user's Google Drive
-3. **Profile Isolation**: Each profile has its own folder and CSV files for complete data separation
+1. **Database-backed Storage**: Normalize core entities (profiles, transactions, tags, currencies) in PostgreSQL (Neon).
+2. **Session-based Auth**: First-party credentials with HTTP-only cookies; no third-party OAuth.
+3. **Profile Isolation**: Row-level ownership enforcement via service-layer checks (per-user `profiles`).
 4. **Mobile-First PWA**: Responsive design that works on all devices and can be installed as an app
-5. **Global Progress Indicator**: Unified loading feedback for all external API calls
-6. **Snapshot Backups**: Full-folder snapshots per profile stored under `backup/{profile}/{timestamp}` in Drive
+5. **Global Progress Indicator**: Unified loading feedback for API calls
+6. **Backups**: Full database backup to CSV files packaged in a single `.zip` for download; full restore by uploading that `.zip`.
 
-## Backup Service
+## Data & Reporting Services
 
 ### Responsibilities
-- Create full-folder snapshot for a profile
-- List available snapshots per profile (sorted by timestamp)
-- Stream a snapshot as a ZIP for download
-- Restore snapshot to the live profile folder (destructive replace)
+- Aggregations and reporting (by date ranges, tags, categories)
+- Full backup/restore endpoints:
+  - `GET /api/backup` → streams `.zip` of CSVs + manifest
+  - `POST /api/restore` → uploads `.zip` and restores transactionally
+- Data retention and housekeeping tasks
 
-### Drive Layout
-- Root `FinanceApp/`
-  - `Profiles/` → live profile folders
-  - `backup/` → per-profile subfolders with timestamped snapshot folders
-
-### Flows
-1. Create Backup
-   - Ensure `backup/` and `backup/{profile}` folders exist
-   - Create timestamp folder `YYYY-MM-DDTHH-mm-ssZ`
-   - Copy all files from `Profiles/{Profile-*}` to snapshot folder
-2. List Backups
-   - List child folders in `backup/{profile}` and map to entries
-3. Download Backup
-   - Read files under `backup/{profile}/{timestamp}` and stream ZIP
-4. Restore Backup
-   - Confirm intent → delete/replace contents of live `Profiles/{Profile-*}`
-   - Copy files from snapshot to live folder
-   - Invalidate caches and refresh client state
+### Notes
+- Use parameterized queries/ORM to prevent SQL injection.
+- Encapsulate authorization checks in service functions close to data access.
 

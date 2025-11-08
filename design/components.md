@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Component Structure
 
 ## Page Components
@@ -6,7 +8,7 @@
 ```
 Dashboard
 ├── Header (AppBar with user info, logout)
-├── ProfileSelector (dropdown showing active profile with photo, option to switch or create new)
+├── ProfileSelector (dropdown showing active profile name, option to switch or create new)
 ├── ActionButtons
 │   ├── CreateTransactionButton
 │   ├── ViewTransactionsButton
@@ -20,7 +22,6 @@ Dashboard
 **Note:** 
 - All transactions are associated with the currently active profile.
 - Users can switch profiles from the dashboard to view different sets of transactions.
-- Profile selector displays profile photo (avatar) next to profile name for visual identification.
 
 ### 2. `/transactions/create` - Create Transaction Page
 ```
@@ -30,9 +31,9 @@ CreateTransaction
 │   ├── TransactionTypeToggle (Expense/Income - prominent toggle or tabs)
 │   ├── DatePicker
 │   ├── AmountInput
-│   ├── CurrencySelector (dropdown from currencies.csv for selected month/year)
+│   ├── CurrencySelector (dropdown from currencies table for selected month/year)
 │   ├── DescriptionInput
-│   ├── TagSelector (dropdown from tags.csv, dynamically filtered by selected transaction type)
+│   ├── TagSelector (dropdown from tags table, dynamically filtered by selected transaction type)
 │   ├── SaveButton
 │   └── CancelButton
 └── RecentTransactions (last 5 entries, showing both types with color coding)
@@ -41,7 +42,7 @@ CreateTransaction
 **Key Features:**
 - Transaction type toggle at the top (default can be 'expense' or last used)
 - Tag selector dynamically updates when transaction type changes
-- Saves to `transactions-YYYY-MM.csv` with selected `transactionType`
+- Saves to database with selected `transactionType`
 - Visual distinction between expense (red) and income (green) modes
 - Quick switch between types without leaving the page
 
@@ -73,7 +74,7 @@ ViewTransactions
 - Type badges for quick identification
 - Month summary showing total income, total expense, and net balance
 - Responsive table that adapts to mobile (cards) and desktop (table)
-- Reads from `transactions-YYYY-MM.csv` and filters based on selected type
+- Reads from database and filters based on selected type
 
 ### 4. `/tags/edit` - Edit Tags Page
 ```
@@ -110,15 +111,15 @@ Statistics
 └── EmptyState (when no data for selected period)
 ```
 
-**Note:** Statistics are calculated from `transactions-YYYY-MM.csv`, filtering by `transactionType` for expenses and incomes
+**Note:** Statistics are calculated from transactions in the database, filtering by `transactionType` for expenses and incomes
 
 ### 6. `/auth/signin` - Sign In Page
 ```
 SignIn
 ├── AppLogo
 ├── WelcomeMessage
-├── GoogleSignInButton
-└── InfoText (permissions needed)
+├── EmailPasswordForm (email, password, submit)
+└── InfoText (security and password guidance)
 ```
 
 ### 7. `/setup` - Initial Setup Page (First-time users)
@@ -127,9 +128,7 @@ Setup
 ├── Header
 ├── SetupSteps
 │   ├── WelcomeStep
-│   ├── FolderSelectionStep (Google Drive folder picker for root folder)
 │   ├── ProfileCreationStep
-│   │   ├── ProfilePhotoUpload (optional, with default avatar option)
 │   │   ├── ProfileNameInput
 │   │   ├── CreateProfileButton
 │   │   └── InfoText (explains profiles and that data will be organized by profile)
@@ -137,18 +136,14 @@ Setup
 │   │   ├── CurrencyDropdown (popular currencies: USD, EUR, GBP, JPY, etc.)
 │   │   ├── CustomCurrencyInput (for other currencies)
 │   │   └── InfoText (explains base currency for conversions and default)
-│   └── InitializationStep (create profile folder, upload photo, default tags.csv, currencies.csv with selected base currency)
+│   └── InitializationStep (create profile record; initialize default tags/currencies with selected base currency)
 └── CompleteButton
 ```
 
 **Profile Creation Features:**
 - User enters a name for their first profile (e.g., "Personal", "Business")
-- User can optionally upload a profile photo during setup
-- Supported photo formats: JPG, PNG, GIF, WebP (max 5MB)
-- System creates a folder in Google Drive named "Profile-{ProfileName}"
-- Profile photo is uploaded to the profile folder
 - Profile is set as the active profile
-- All subsequent data (tags, currencies, transactions) will be stored in this profile folder
+- All subsequent data (tags, currencies, transactions) will be stored in the database under this profile
 
 **Base Currency Selection Features:**
 - Dropdown with common currencies (USD, EUR, GBP, JPY, AUD, CAD, CHF, CNY, INR, SGD)
@@ -188,41 +183,34 @@ ManageCurrencies
 ```
 ManageProfiles
 ├── Header (AppBar with back button)
-├── ActiveProfileDisplay (shows currently active profile with photo)
+├── ActiveProfileDisplay (shows currently active profile name)
 ├── ProfilesList
 │   └── ProfileItem
-│       ├── ProfilePhoto (avatar/image)
 │       ├── ProfileName
-│       ├── ChangePhotoButton
 │       ├── SetActiveButton (if not current)
 │       ├── ActiveBadge (if current)
 │       ├── RenameButton
 │       └── DeleteButton (disabled if active profile)
 ├── CreateProfileForm
 │   ├── ProfileNameInput
-│   ├── ProfilePhotoUpload (optional during creation)
 │   └── CreateButton
 └── InfoText ("All transactions are saved under the active profile")
 ```
 
 **Features:**
-- List all existing profiles with their photos
+- List all existing profiles
 - Mark the currently active profile
 - Switch active profile (loads that profile's data)
-- Create new profiles with unique names and optional photo
-- Upload/change profile photos (stored in Google Drive)
+- Create new profiles with unique names
 - Rename existing profiles
 - Delete profiles (except the active one)
-- Each profile has its own set of CSV files in a separate folder
-- Profile photos are displayed as circular avatars throughout the app
+- Each profile is isolated by ownership in the database
 
 ## Shared/Reusable Components
 
 - `Header` - App bar with navigation
-- `GlobalProgressBar` - Global infinite progress bar for external API calls
-- `ProfileSelector` - Dropdown to select/switch active profile (with photo avatar)
-- `ProfileAvatar` - Display profile photo as circular avatar
-- `PhotoUpload` - Photo upload component with preview and crop functionality
+- `GlobalProgressBar` - Global infinite progress bar for API calls
+- `ProfileSelector` - Dropdown to select/switch active profile
 - `LoadingSpinner` - Loading indicator (local component use)
 - `ErrorBoundary` - Error handling wrapper
 - `ConfirmDialog` - Confirmation modal
@@ -233,5 +221,5 @@ ManageProfiles
 - `TagChip` - Colored tag display
 - `EmptyState` - No data placeholder
 
-**Note:** The `GlobalProgressBar` component displays an infinite progress indicator at the top of the page during any external resource calls (Google Drive API, authentication requests, etc.). It is managed globally and automatically shows/hides based on pending external requests.
+**Note:** The `GlobalProgressBar` component displays an infinite progress indicator at the top of the page during API calls. It is managed globally and automatically shows/hides based on pending requests.
 

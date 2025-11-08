@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Core Technologies
 
 ## Frontend Framework
@@ -23,4 +25,12 @@
 - `@emotion/react` and `@emotion/styled` - CSS-in-JS styling
 - Responsive design components
 - Theme customization support
+
+## Backend Data Access
+
+### Prisma ORM
+- Type-safe database access for PostgreSQL (Neon)
+- Schema-driven with migrations (`prisma migrate`)
+- Generated client with rich TypeScript types
+- See `design/data-models.md` for schema and `stack/data-storage.md` for setup
 

@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Deployment & Containerization
 
 ## Docker
@@ -21,6 +23,16 @@
 ### Google Cloud Build (optional)
 - Automated builds on git push
 - Deployment pipeline
+
+## Database (Neon) & Prisma
+
+- Ensure `DATABASE_URL` is set with `sslmode=require`.
+- Run Prisma migrations during deploy:
+```bash
+npx prisma migrate deploy
+npx prisma generate
+```
+- Use connection pooling (Neon pooler or Prisma Accelerate) for serverless environments.
 
 ## Deployment Commands
 

@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # Development Tools & Setup
 
 ## Code Quality & Validation
@@ -24,7 +26,7 @@
 
 ### Prerequisites
 1. Node.js 18+ installed
-2. Third-party provider credentials configured as needed (see `design/authentication.md`)
+2. PostgreSQL (Neon) database URL configured (see `design/authentication.md`)
 3. Docker installed (if deploying containers)
 
 ### Local Development Setup
@@ -32,9 +34,20 @@
 # Install dependencies
 npm install
 
+# Install Prisma
+npm i -D prisma
+npm i @prisma/client
+npx prisma init
+
+# Define models in prisma/schema.prisma (see design/data-models.md)
+
+# Run migrations and generate client
+npx prisma migrate dev -n init
+npx prisma generate
+
 # Set up environment variables
 cp .env.example .env.local
-# Edit .env.local with your provider credentials
+# Edit .env.local with your DATABASE_URL and session/JWT secrets
 
 # Run development server
 npm run dev
@@ -44,5 +57,8 @@ npm run build
 
 # Start production server
 npm start
+
+# Optional: Prisma Studio
+npx prisma studio
 ```
 

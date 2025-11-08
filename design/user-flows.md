@@ -1,31 +1,29 @@
+[← Back to README](README.md)
+
 # User Flows
 
 ## 1. First-Time User Flow
 ```
 Start → Sign In Required → 
-Google OAuth → Permission Grant → 
+Create Account or Sign In (Email + Password) → 
 Setup Page → 
   Step 1: Welcome & Introduction →
-  Step 2: Select/Create Drive Folder →
-  Step 3: Create Profile (Enter Profile Name) →
-  Step 4: Choose Base Currency (from dropdown or custom input) →
-  Step 5: Initialize Files (settings.json, tags.csv, currencies.csv with selected base currency) → 
+  Step 2: Create Profile (Enter Profile Name) →
+  Step 3: Choose Base Currency (from dropdown or custom input) →
+  Step 4: Initialize Database Records (default tags, base currency) → 
 Dashboard
 ```
 
 **Profile & Base Currency Selection Details:**
-- After linking Google Drive folder, user is presented with a "Create Profile" button
-- User creates first profile with a name and optional profile photo
+- User is presented with a "Create Profile" step
+- User creates first profile with a name
 - User selects their primary currency (default: USD)
-- System creates profile folder in Google Drive
-- System uploads profile photo (if provided) to profile folder and stores file ID
-- System creates `currencies.csv` with selected base currency (ratio 1.0) in profile folder
-- System creates `tags.csv` in profile folder
-- Sets `defaultCurrency` in `settings.json`
-- Stores profile information (name, folder ID, photo file ID) in `settings.json`
+- System creates profile record in the database
+- System initializes currencies with selected base currency (ratio 1.0) in DB
+- System initializes tags in DB
 - All future transactions default to this currency
 - Can be changed later in app settings
-- User can create multiple profiles, each with their own photo
+- User can create multiple profiles
 
 ## 2. Create Transaction Flow (Expense or Income)
 ```
@@ -33,9 +31,9 @@ Dashboard → Create Transaction Button →
 Transaction Form → 
 User Selects Transaction Type (Expense/Income toggle) →
 Fill Details (Date, Amount, Currency, Description, Tag filtered by type) → 
-Validate → Check if Currency exists in currencies.csv for that month →
-If not exists: Show warning or auto-add with ratio 1.0 → 
-Save to CSV (transactions-YYYY-MM.csv) with selected transactionType → 
+Validate → Check if Currency exists in DB for that month →
+If not exists: Show warning or auto-add with ratio 1.0 →
+Save to database with selected transactionType → 
 Success Message → Dashboard or Stay to Add Another
 ```
 
@@ -47,12 +45,12 @@ Success Message → Dashboard or Stay to Add Another
 ## 3. View Transactions Flow
 ```
 Dashboard → View Transactions Button → 
-Load All Transaction Files (transactions-YYYY-MM.csv) → Group by Year/Month → 
+Query transactions from DB → Group by Year/Month → 
 Display List with Filter Controls (All/Expense/Income) → 
 User Selects Filter Type (default: All) → 
 User Selects Month → 
-Load & Parse CSV → Filter by selected transactionType → Display Table → 
-Optional: Edit or Delete Row → Update CSV (modify or remove row from transactions file) →
+Fetch data → Filter by selected transactionType → Display Table → 
+Optional: Edit or Delete Row → Persist changes in DB →
 Refresh Display
 ```
 
@@ -66,10 +64,10 @@ Refresh Display
 ```
 Dashboard → Statistics Button → 
 Select Year → Select Month → 
-Load transactions-YYYY-MM.csv → 
+Load transactions from DB → 
 Filter expenses (transactionType === 'expense') → 
 Filter incomes (transactionType === 'income') → 
-Load currencies.csv for selected month/year →
+Load currencies for selected month/year from DB →
 Determine available currencies from records → 
 Populate Display Currency dropdown → 
 User selects display currency (default: USD or user's default) →
@@ -82,70 +80,62 @@ Display Results
 ## 5. Edit Tags Flow
 ```
 Dashboard → Edit Tags Button → 
-Load tags.csv → Display Tags → 
+Load tags from DB → Display Tags → 
 User Edits (Add/Delete/Modify) → 
-Validate → Save tags.csv → 
+Validate → Save to DB → 
 Success Message
 ```
 
 ## 6. Manage Currencies Flow
 ```
 Dashboard → Manage Currencies Button → 
-Load currencies.csv (from active profile folder) → Group by Year/Month → Display List → 
+Load currencies from DB → Group by Year/Month → Display List → 
 User Actions:
   - Add Currency: Enter Name, Year, Month, Ratio → Validate → Save
   - Edit Ratio: Update ratio value → Validate → Save
-  - Delete Currency: Confirm → Remove from CSV → Save
+  - Delete Currency: Confirm → Remove from DB → Save
 Success Message
 ```
 
 ## 7. Profile Management Flow
 ```
 Dashboard → Manage Profiles Button → 
-Load Profiles List from settings.json → Display Active Profile with Photo → 
+Load Profiles List from DB → Display Active Profile → 
 User Actions:
-  - Switch Profile: Select Profile → Update activeProfileId in settings.json → Reload Dashboard
-  - Create Profile: Enter Profile Name → Optional: Upload Photo → Generate Profile ID → 
-    Create Profile Folder in Drive → Upload Photo to Profile Folder (if provided) → 
-    Initialize CSV Files (tags.csv, currencies.csv) → Add to profiles array with photoFileId → 
-    Save settings.json
-  - Change Profile Photo: Select Profile → Upload New Photo → Delete Old Photo from Drive → 
-    Upload New Photo to Profile Folder → Update photoFileId in profile object → Save settings.json
-  - Rename Profile: Select Profile → Enter New Name → Update profile name → Save settings.json
-  - Delete Profile: Select Profile (non-active) → Confirm → Delete Profile Folder from Drive 
-    (including photo) → Remove from profiles array → Save settings.json
+  - Switch Profile: Select Profile → Update active selection in DB/user state → Reload Dashboard
+  - Create Profile: Enter Profile Name → Generate Profile ID → 
+    Initialize default records (tags, currencies) in DB
+  - Rename Profile: Select Profile → Enter New Name → Update profile name in DB
+  - Delete Profile: Select Profile (non-active) → Confirm → Remove from DB
 Success Message
 ```
 
 ## 8. App Startup Profile Selection Flow
 ```
-App Load → Check settings.json → 
-If activeProfileId exists: Load Active Profile Data → Dashboard
-If no activeProfileId or profiles empty: Redirect to Setup/Create Profile Flow
+App Load → Check session and user settings in DB → 
+If active profile exists: Load Active Profile Data → Dashboard
+If no active profile or profiles empty: Redirect to Setup/Create Profile Flow
 User can switch profile anytime from Dashboard
 ```
 
-## 9. Backup Management Flow
+## 9. Backup & Restore Flow
 ```
-Dashboard → Backups Button →
-Load backup/{profile}/ timestamps → Display list (newest first) →
+Dashboard → Backup & Restore →
 User Actions:
-  - Create Backup: Click "Create Backup" → Confirm → 
-    Global progress bar shows while snapshotting profile folder → 
-    On success: new entry appears with timestamp
-  - Download Backup: Select backup row → "Download" → 
-    API returns ZIP → Browser download starts
-  - Restore Backup: Select backup row → "Restore" → 
-    Warning dialog (destructive) with explicit confirmation → 
-    Global progress bar shows while replacing live profile contents → 
-    On success: cache invalidation and data refresh → Success Message
-Optional: Pagination/limit controls for long histories
+  - Download Full Backup:
+    Click "Download Backup" → Confirm →
+    Global progress bar shows while creating export →
+    Browser downloads `backup-YYYYMMDDTHHmmssZ.zip`
+  - Restore From Backup:
+    Click "Restore from ZIP" → Choose file →
+    Warning dialog (destructive) with type-to-confirm →
+    Global progress bar shows while restoring →
+    On success: data refresh → Success Message
 ```
 
 **Key UX Features:**
-- Clear indication that backups are full snapshots of the profile folder
-- Timestamp format `YYYY-MM-DDTHH:mm:ssZ` (display localized, keep original for IDs)
-- Disabled restore button if snapshot folder missing
-- Double-confirmation (and profile name type-to-confirm) on restore
-- All actions reflect in the global progress bar
+- Backups are full database snapshots as CSVs packaged in a single `.zip`
+- Timestamp format `YYYY-MM-DDTHH:mm:ssZ` in filenames (display localized in UI)
+- Double-confirmation on restore (type-to-confirm)
+- All actions surface progress via the global progress bar
 

@@ -1,3 +1,5 @@
+[← Back to README](README.md)
+
 # UI/UX Design Guidelines
 
 ## Theme
@@ -59,30 +61,28 @@
 3. **Memoization**: Use React.memo for expensive components
 
 ### Loading States
-- **Global infinite progress bar** for all external resource calls (Google Drive API, authentication, etc.)
+- **Global infinite progress bar** for API calls
 - Skeleton screens for content loading
 - Local progress indicators for specific operations
 - Optimistic UI updates for better perceived performance
 
-**External Resource Call Handling:**
-- Every call to outside resources (Google Drive API, Google OAuth, etc.) triggers the global infinite progress bar
+**API Call Handling:**
+- Every API call that hits the server triggers the global infinite progress bar
 - Progress bar appears at the top of the page (Material UI LinearProgress with indeterminate mode)
-- Automatically shows when external request starts and hides when complete
+- Automatically shows when request starts and hides when complete
 - Multiple concurrent requests keep the progress bar visible until all complete
 - Provides consistent user feedback across all pages and operations
 
 ## User Experience Best Practices
 
 ### General
-- Display active profile name and photo prominently in the dashboard
-- Make profile switching intuitive and easily accessible with visual profile avatars
+- Display active profile name prominently in the dashboard
+- Make profile switching intuitive and easily accessible
 - Provide clear explanations about profile separation during setup
 - Show confirmation dialogs when deleting profiles to prevent accidental data loss
 
 ### Profile Management
-- Support common image formats for profile photos (JPG, PNG, GIF, WebP)
-- Provide image cropping/resizing functionality for profile photos
-- Display profile avatars consistently throughout the app (circular format)
+- No profile photo storage; keep profile visuals simple and text-focused
 
 ### Transaction Management
 - Pre-select user's base/default currency in transaction forms
@@ -99,33 +99,31 @@
 - Explain base currency concept during first-time setup with clear, simple language
 
 ### Loading and Feedback
-- Global progress bar provides consistent feedback for all external operations without cluttering the UI
+- Global progress bar provides consistent feedback for API operations without cluttering the UI
 - Local spinners for specific component operations
 - Success messages and error notifications via snackbar
 
 ## Backups UI
 
 ### Page Layout
-- Header with active profile name and "Create Backup" primary action
-- Table/List of backups (newest first) with columns:
-  - Timestamp (localized display, raw ISO kept for IDs)
-  - Actions: Download, Restore
-- Empty state with explanation and a prominent "Create Backup" button
+- Header with active profile name and two primary actions:
+  - \"Download Backup\" (primary)
+  - \"Restore from ZIP\" (secondary, danger context)
+- No server-side list is displayed; backups are downloaded to the user's machine as a single `.zip`.
 
 ### Actions
-- Create Backup:
-  - Confirmation dialog explains that a full snapshot will be created
-  - Show global progress bar during operation
-  - Disable the create button while running
-- Download:
-  - Streams ZIP; show local spinner on the row
-- Restore:
-  - Danger-styled button; requires double confirmation
-  - Type-to-confirm profile name to proceed
+- Download Backup:
+  - Confirmation dialog explains a full database backup (CSV-in-zip) will be created
+  - Show global progress bar during export
+  - Trigger browser download of `backup-YYYYMMDDTHHmmssZ.zip`
+- Restore from ZIP:
+  - Danger-styled action; requires double confirmation
+  - Type-to-confirm app/profile name to proceed
+  - File picker accepts `.zip` only
   - Show global progress bar during restore
   - After success, reload affected data and show success snackbar
 
 ### Edge Cases
-- Handle Drive permission errors with clear remediation steps
+- Handle authorization failures with clear remediation steps (e.g., re-authenticate)
 
 
