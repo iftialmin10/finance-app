@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Container,
@@ -21,6 +21,7 @@ import {
   CardContent,
   Divider,
   CircularProgress,
+  Skeleton,
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -40,6 +41,9 @@ import { useApi } from '@/utils/useApi'
 import { formatAmount } from '@/utils/amount'
 import { format } from 'date-fns'
 import type { TransactionType, Transaction } from '@/types'
+import { ErrorState } from '@/components/ErrorState'
+import { LoadingButton } from '@/components/LoadingButton'
+import { getFriendlyErrorMessage } from '@/utils/error'
 
 export default function CreateTransactionPage() {
   const router = useRouter()
@@ -72,6 +76,7 @@ export default function CreateTransactionPage() {
   // Recent transactions state
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([])
   const [isLoadingRecent, setIsLoadingRecent] = useState(true)
+  const [recentError, setRecentError] = useState<string | null>(null)
 
   // Get available tags filtered by type - memoized to prevent infinite loops
   const availableTags = useMemo(() => tags.filter((tag) => tag.type === type), [tags, type])
@@ -84,33 +89,44 @@ export default function CreateTransactionPage() {
   }, [defaultCurrency, currency])
 
   // Load recent transactions
-  useEffect(() => {
-    const loadRecentTransactions = async () => {
-      if (!activeProfile) {
-        setIsLoadingRecent(false)
-        return
-      }
-
-      try {
-        setIsLoadingRecent(true)
-        const response = await api.getTransactions({
-          profile: activeProfile,
-          limit: 5,
-        })
-
-        if (response.success && response.data) {
-          setRecentTransactions(response.data.transactions || [])
-        }
-      } catch (error) {
-        console.error('Error loading recent transactions:', error)
-      } finally {
-        setIsLoadingRecent(false)
-      }
+  const loadRecentTransactions = useCallback(async () => {
+    if (!activeProfile) {
+      setRecentTransactions([])
+      setIsLoadingRecent(false)
+      setRecentError(null)
+      return
     }
 
+    try {
+      setIsLoadingRecent(true)
+      setRecentError(null)
+      const response = await api.getTransactions({
+        profile: activeProfile,
+        limit: 5,
+      })
+
+      if (response.success && response.data) {
+        setRecentTransactions(response.data.transactions || [])
+      } else {
+        setRecentTransactions([])
+        setRecentError(response.error?.message || 'Failed to load recent transactions.')
+      }
+    } catch (error) {
+      const message = getFriendlyErrorMessage(error, 'Failed to load recent transactions.')
+      setRecentTransactions([])
+      setRecentError(message)
+    } finally {
+      setIsLoadingRecent(false)
+    }
+  }, [activeProfile, api])
+
+  useEffect(() => {
     loadRecentTransactions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile])
+  }, [loadRecentTransactions])
+
+  const handleRetryRecentTransactions = () => {
+    loadRecentTransactions()
+  }
 
   // Update available tags when type changes
   useEffect(() => {
@@ -135,13 +151,50 @@ export default function CreateTransactionPage() {
 
   const handleTagToggle = (tagId: string) => {
     setSelectedTags((prev) => {
+      let next: string[]
       if (prev.includes(tagId)) {
-        return prev.filter((id) => id !== tagId)
+        next = prev.filter((id) => id !== tagId)
       } else {
-        return [...prev, tagId]
+        next = [...prev, tagId]
       }
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        tags: next.length === 0 ? 'At least one tag is required' : undefined,
+      }))
+      return next
     })
-    setErrors((prev) => ({ ...prev, tags: undefined }))
+  }
+
+  const handleDateChange = (value: string) => {
+    setDate(value)
+    setErrors((prev) => ({
+      ...prev,
+      date: value ? undefined : 'Date is required',
+    }))
+  }
+
+  const handleAmountChange = (value: number) => {
+    setAmount(value)
+    setErrors((prev) => ({
+      ...prev,
+      amount: value > 0 ? undefined : 'Amount must be greater than 0',
+    }))
+  }
+
+  const handleCurrencyChange = (value: string) => {
+    setCurrency(value)
+    setErrors((prev) => ({
+      ...prev,
+      currency: value ? undefined : 'Currency is required',
+    }))
+  }
+
+  const handleDescriptionChange = (value: string) => {
+    setDescription(value)
+    setErrors((prev) => ({
+      ...prev,
+      description: value.trim() ? undefined : 'Description is required',
+    }))
   }
 
   const validateForm = (): boolean => {
@@ -170,6 +223,14 @@ export default function CreateTransactionPage() {
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
+
+  const isFormValid =
+    !!date &&
+    amount > 0 &&
+    !!currency &&
+    !!description.trim() &&
+    selectedTags.length > 0 &&
+    Object.values(errors).every((error) => !error)
 
   const handleSubmit = async () => {
     if (!activeProfile) {
@@ -240,9 +301,10 @@ export default function CreateTransactionPage() {
         })
       }
     } catch (error: any) {
+      const message = getFriendlyErrorMessage(error, 'An error occurred while creating the transaction.')
       setSnackbar({
         open: true,
-        message: error.message || 'An error occurred while creating the transaction',
+        message,
         severity: 'error',
       })
     } finally {
@@ -327,7 +389,7 @@ export default function CreateTransactionPage() {
                 <DatePicker
                   label="Date"
                   value={date}
-                  onChange={setDate}
+                  onChange={handleDateChange}
                   error={!!errors.date}
                   helperText={errors.date}
                   required
@@ -340,7 +402,7 @@ export default function CreateTransactionPage() {
                   <AmountInput
                     label="Amount"
                     value={amount}
-                    onChange={setAmount}
+                    onChange={handleAmountChange}
                     currency={currency}
                     error={!!errors.amount}
                     helperText={errors.amount}
@@ -350,7 +412,7 @@ export default function CreateTransactionPage() {
                 <Box sx={{ flex: 1 }}>
                   <CurrencySelector
                     value={currency}
-                    onChange={setCurrency}
+                    onChange={handleCurrencyChange}
                     error={!!errors.currency}
                     helperText={errors.currency}
                     required
@@ -363,10 +425,7 @@ export default function CreateTransactionPage() {
                 <TextField
                   label="Description"
                   value={description}
-                  onChange={(e) => {
-                    setDescription(e.target.value)
-                    setErrors((prev) => ({ ...prev, description: undefined }))
-                  }}
+                  onChange={(e) => handleDescriptionChange(e.target.value)}
                   error={!!errors.description}
                   helperText={errors.description}
                   required
@@ -415,14 +474,15 @@ export default function CreateTransactionPage() {
                 >
                   Cancel
                 </Button>
-                <Button
+                <LoadingButton
                   variant="contained"
                   startIcon={<AddIcon />}
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  loading={isSubmitting}
+                  disabled={isSubmitting || !isFormValid}
                 >
                   {isSubmitting ? 'Creating...' : 'Create Transaction'}
-                </Button>
+                </LoadingButton>
               </Box>
             </Paper>
           </Box>
@@ -435,9 +495,18 @@ export default function CreateTransactionPage() {
               </Typography>
               <Divider sx={{ my: 2 }} />
 
-              {isLoadingRecent ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress size={32} />
+              {recentError ? (
+                <ErrorState
+                  title="Unable to load recent transactions"
+                  message={recentError}
+                  onRetry={handleRetryRecentTransactions}
+                  compact
+                />
+              ) : isLoadingRecent ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <Skeleton key={index} variant="rounded" height={84} />
+                  ))}
                 </Box>
               ) : recentTransactions.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
 
 interface LoadingContextType {
   isLoading: boolean
@@ -13,13 +13,13 @@ const LoadingContext = createContext<LoadingContextType | undefined>(undefined)
 export function LoadingProvider({ children }: { children: ReactNode }) {
   const [requestCount, setRequestCount] = useState(0)
 
-  const startLoading = () => {
+  const startLoading = useCallback(() => {
     setRequestCount((prev) => prev + 1)
-  }
+  }, [])
 
-  const stopLoading = () => {
+  const stopLoading = useCallback(() => {
     setRequestCount((prev) => Math.max(0, prev - 1))
-  }
+  }, [])
 
   const isLoading = requestCount > 0
 

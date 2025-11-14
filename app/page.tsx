@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -10,6 +10,7 @@ import {
   Card,
   CardContent,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -26,8 +27,11 @@ import { useProfile } from '@/contexts/ProfileContext'
 import { useCurrency } from '@/contexts/CurrencyContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useApi } from '@/utils/useApi'
+import { ErrorState } from '@/components/ErrorState'
+import { getFriendlyErrorMessage } from '@/utils/error'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import type { StatisticsData } from '@/types'
+import { AnimatedSection } from '@/components/AnimatedSection'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -37,6 +41,7 @@ export default function DashboardPage() {
   const api = useApi()
   const [statistics, setStatistics] = useState<StatisticsData | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   // EARLY RETURN: If not authenticated (no real user), don't render anything (StartupRedirect will handle redirect)
   if (!authLoading && !user) {
@@ -45,38 +50,51 @@ export default function DashboardPage() {
   
   // Allow guest mode to render (API is intercepted)
 
-  // Load statistics for current month
-  useEffect(() => {
-    const loadStatistics = async () => {
-      if (!activeProfile) return
-      const currencyCode = defaultCurrency?.code || 'USD'
-
-      setIsLoadingStats(true)
-      try {
-        const now = new Date()
-        const from = format(startOfMonth(now), 'yyyy-MM-dd')
-        const to = format(endOfMonth(now), 'yyyy-MM-dd')
-
-        const response = await api.getStatistics({
-          profile: activeProfile,
-          from,
-          to,
-          currency: currencyCode, // Use selected default currency
-        })
-
-        if (response.success && response.data) {
-          setStatistics(response.data)
-        }
-      } catch (error) {
-        console.error('Error loading statistics:', error)
-      } finally {
-        setIsLoadingStats(false)
-      }
+  const loadStatistics = useCallback(async () => {
+    if (!activeProfile) {
+      setStatistics(null)
+      setStatsError(null)
+      return
     }
 
+    const currencyCode = defaultCurrency?.code || 'USD'
+    setIsLoadingStats(true)
+    setStatsError(null)
+
+    try {
+      const now = new Date()
+      const from = format(startOfMonth(now), 'yyyy-MM-dd')
+      const to = format(endOfMonth(now), 'yyyy-MM-dd')
+
+      const response = await api.getStatistics({
+        profile: activeProfile,
+        from,
+        to,
+        currency: currencyCode,
+      })
+
+      if (response.success && response.data) {
+        setStatistics(response.data)
+        setStatsError(null)
+      } else {
+        setStatistics(null)
+        setStatsError(response.error?.message || 'Failed to load statistics.')
+      }
+    } catch (error) {
+      setStatistics(null)
+      setStatsError(getFriendlyErrorMessage(error, 'Failed to load statistics.'))
+    } finally {
+      setIsLoadingStats(false)
+    }
+  }, [activeProfile, defaultCurrency?.code, api])
+
+  useEffect(() => {
     loadStatistics()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile, defaultCurrency?.code])
+  }, [loadStatistics])
+
+  const handleRetryStatistics = () => {
+    loadStatistics()
+  }
 
   const formatAmount = (amountMinor: number, currency: string = 'USD'): string => {
     const amount = amountMinor / 100
@@ -86,50 +104,58 @@ export default function DashboardPage() {
     }).format(amount)
   }
 
-  const actionButtons = [
-    {
-      title: 'Create Transaction',
-      icon: <AddIcon />,
-      color: 'primary' as const,
-      onClick: () => router.push('/transactions/create'),
-    },
-    {
-      title: 'View Transactions',
-      icon: <ListIcon />,
-      color: 'primary' as const,
-      onClick: () => router.push('/transactions'),
-    },
-    {
-      title: 'Edit Tags',
-      icon: <LabelIcon />,
-      color: 'secondary' as const,
-      onClick: () => router.push('/tags'),
-    },
-    {
-      title: 'Manage Currencies',
-      icon: <CurrencyExchangeIcon />,
-      color: 'secondary' as const,
-      onClick: () => router.push('/currencies'),
-    },
-    {
-      title: 'Statistics',
-      icon: <BarChartIcon />,
-      color: 'info' as const,
-      onClick: () => router.push('/statistics'),
-    },
-    {
-      title: 'Manage Profiles',
-      icon: <PeopleIcon />,
-      color: 'info' as const,
-      onClick: () => router.push('/profiles'),
-    },
-    {
-      title: 'Backup & Restore',
-      icon: <BackupIcon />,
-      color: 'warning' as const,
-      onClick: () => router.push('/backup-restore'),
-    },
-  ]
+  const navigateTo = useCallback(
+    (path: string) => () => router.push(path),
+    [router]
+  )
+
+  const actionButtons = useMemo(
+    () => [
+      {
+        title: 'Create Transaction',
+        icon: <AddIcon />,
+        color: 'primary' as const,
+        onClick: navigateTo('/transactions/create'),
+      },
+      {
+        title: 'View Transactions',
+        icon: <ListIcon />,
+        color: 'primary' as const,
+        onClick: navigateTo('/transactions'),
+      },
+      {
+        title: 'Edit Tags',
+        icon: <LabelIcon />,
+        color: 'secondary' as const,
+        onClick: navigateTo('/tags'),
+      },
+      {
+        title: 'Manage Currencies',
+        icon: <CurrencyExchangeIcon />,
+        color: 'secondary' as const,
+        onClick: navigateTo('/currencies'),
+      },
+      {
+        title: 'Statistics',
+        icon: <BarChartIcon />,
+        color: 'info' as const,
+        onClick: navigateTo('/statistics'),
+      },
+      {
+        title: 'Manage Profiles',
+        icon: <PeopleIcon />,
+        color: 'info' as const,
+        onClick: navigateTo('/profiles'),
+      },
+      {
+        title: 'Backup & Restore',
+        icon: <BackupIcon />,
+        color: 'warning' as const,
+        onClick: navigateTo('/backup-restore'),
+      },
+    ],
+    [navigateTo]
+  )
 
   // Check authentication first - redirect to sign-in if not authenticated
   useEffect(() => {
@@ -181,84 +207,104 @@ export default function DashboardPage() {
     <PageLayout>
       <Box>
         {/* Profile Selector */}
-        <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-            <Box sx={{ flex: 1, minWidth: 200 }}>
-              <Typography variant="h6" gutterBottom>
-                Active Profile
-              </Typography>
-              <ProfileSelector
-                autoSwitch={true}
-                fullWidth={false}
-              />
-            </Box>
-            {activeProfile && (
-              <Typography variant="body2" color="text.secondary">
-                All transactions and tags are associated with this profile
-              </Typography>
-            )}
-          </Box>
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => router.push('/profiles')}
-            >
-              Manage Profiles
-            </Button>
-          </Box>
-        </Paper>
-
-        {/* Quick Summary */}
-        {activeProfile && statistics && (
+        <AnimatedSection>
           <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              Quick Summary - {format(new Date(), 'MMMM yyyy')}
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3 }}>
-              <Card sx={{ flex: 1, backgroundColor: 'success.light', color: 'success.contrastText' }}>
-                <CardContent>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Income
-                  </Typography>
-                  <Typography variant="h5">
-                    {formatAmount(statistics.summary.totalIncome.amountMinor, statistics.period.currency)}
-                  </Typography>
-                </CardContent>
-              </Card>
-              <Card sx={{ flex: 1, backgroundColor: 'error.light', color: 'error.contrastText' }}>
-                <CardContent>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Expense
-                  </Typography>
-                  <Typography variant="h5">
-                    {formatAmount(statistics.summary.totalExpense.amountMinor, statistics.period.currency)}
-                  </Typography>
-                </CardContent>
-              </Card>
-              <Card sx={{ flex: 1, backgroundColor: 'info.light', color: 'info.contrastText' }}>
-                <CardContent>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Balance
-                  </Typography>
-                  <Typography variant="h5">
-                    {formatAmount(statistics.summary.netBalance.amountMinor, statistics.period.currency)}
-                  </Typography>
-                </CardContent>
-              </Card>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ flex: 1, minWidth: 200 }}>
+                <Typography variant="h6" gutterBottom>
+                  Active Profile
+                </Typography>
+                <ProfileSelector
+                  autoSwitch={true}
+                  fullWidth={false}
+                />
+              </Box>
+              {activeProfile && (
+                <Typography variant="body2" color="text.secondary">
+                  All transactions and tags are associated with this profile
+                </Typography>
+              )}
+            </Box>
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => router.push('/profiles')}
+              >
+                Manage Profiles
+              </Button>
             </Box>
           </Paper>
+        </AnimatedSection>
+
+        {/* Quick Summary */}
+        {statsError && (
+          <ErrorState
+            title="Unable to load statistics"
+            message={statsError}
+            onRetry={handleRetryStatistics}
+          />
+        )}
+
+        {isLoadingStats && !statsError && (
+          <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
+            <Skeleton variant="text" width="35%" height={32} />
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3, mt: 2 }}>
+              {[0, 1, 2].map((item) => (
+                <Card key={item} sx={{ flex: 1 }}>
+                  <CardContent>
+                    <Skeleton variant="text" width="50%" />
+                    <Skeleton variant="text" height={36} />
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          </Paper>
+        )}
+
+        {activeProfile && statistics && !statsError && !isLoadingStats && (
+          <AnimatedSection delay={75}>
+            <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
+              <Typography variant="h6" gutterBottom>
+                Quick Summary - {format(new Date(), 'MMMM yyyy')}
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 3 }}>
+                <Card sx={{ flex: 1, backgroundColor: 'success.light', color: 'success.contrastText' }}>
+                  <CardContent>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Income
+                    </Typography>
+                    <Typography variant="h5">
+                      {formatAmount(statistics.summary.totalIncome.amountMinor, statistics.period.currency)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+                <Card sx={{ flex: 1, backgroundColor: 'error.light', color: 'error.contrastText' }}>
+                  <CardContent>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Expense
+                    </Typography>
+                    <Typography variant="h5">
+                      {formatAmount(statistics.summary.totalExpense.amountMinor, statistics.period.currency)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+                <Card sx={{ flex: 1, backgroundColor: 'info.light', color: 'info.contrastText' }}>
+                  <CardContent>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Balance
+                    </Typography>
+                    <Typography variant="h5">
+                      {formatAmount(statistics.summary.netBalance.amountMinor, statistics.period.currency)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+            </Paper>
+          </AnimatedSection>
         )}
 
         {/* Loading state for statistics */}
-        {activeProfile && isLoadingStats && (
-          <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-            <Typography variant="body2" color="text.secondary">
-              Loading statistics...
-            </Typography>
-          </Paper>
-        )}
-
         {/* No active profile message */}
         {!activeProfile && !profilesLoading && (
           <Alert severity="info" sx={{ mb: 4 }}>
@@ -267,44 +313,48 @@ export default function DashboardPage() {
         )}
 
         {/* Action Buttons */}
-        <Paper elevation={2} sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Quick Actions
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                md: 'repeat(3, 1fr)',
-              },
-              gap: 2,
-            }}
-          >
-            {actionButtons.map((button) => (
-              <Button
-                key={button.title}
-                fullWidth
-                variant="contained"
-                color={button.color}
-                startIcon={button.icon}
-                onClick={button.onClick}
-                sx={{
-                  py: 2,
-                  height: '100%',
-                  minHeight: 80,
-                  flexDirection: 'column',
-                  gap: 1,
-                }}
-              >
-                <Typography variant="body1" fontWeight="bold">
-                  {button.title}
-                </Typography>
-              </Button>
-            ))}
-          </Box>
-        </Paper>
+        <AnimatedSection delay={120}>
+          <Paper elevation={2} sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Quick Actions
+            </Typography>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, 1fr)',
+                  md: 'repeat(3, 1fr)',
+                },
+                gap: 2,
+              }}
+            >
+              {actionButtons.map((button, index) => (
+                <Button
+                  key={button.title}
+                  fullWidth
+                  variant="contained"
+                  color={button.color}
+                  startIcon={button.icon}
+                  onClick={button.onClick}
+                  className="interactive-card"
+                  sx={{
+                    py: 2,
+                    height: '100%',
+                    minHeight: 80,
+                    flexDirection: 'column',
+                    gap: 1,
+                    transitionDelay: `${index * 30}ms`,
+                  }}
+                >
+                  <Typography variant="body1" fontWeight="bold">
+                    {button.title}
+                  </Typography>
+                </Button>
+              ))}
+            </Box>
+          </Paper>
+        </AnimatedSection>
       </Box>
     </PageLayout>
   )

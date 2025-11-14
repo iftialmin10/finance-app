@@ -13,11 +13,14 @@ import {
   setDefaultCurrency as setDefaultCurrencyDB,
 } from '@/utils/indexedDB'
 import { useApi } from '@/utils/useApi'
+import { getFriendlyErrorMessage } from '@/utils/error'
 
 interface CurrencyContextType {
   currencies: Currency[]
   defaultCurrency: Currency | null
   isLoading: boolean
+  error: string | null
+  clearError: () => void
   addCurrency: (code: string, isDefault?: boolean) => Promise<void>
   updateCurrency: (code: string, updates: Partial<Currency>) => Promise<void>
   deleteCurrency: (code: string) => Promise<void>
@@ -47,6 +50,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [defaultCurrency, setDefaultCurrency] = useState<Currency | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadCurrencies()
@@ -69,12 +73,14 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const loadCurrencies = async () => {
     try {
       setIsLoading(true)
+      setError(null)
       const allCurrencies = await getAllCurrencies()
       const defaultCurr = await getDefaultCurrency()
       setCurrencies(allCurrencies)
       setDefaultCurrency(defaultCurr)
     } catch (error) {
       console.error('Error loading currencies:', error)
+      setError(getFriendlyErrorMessage(error, 'Failed to load currencies.'))
     } finally {
       setIsLoading(false)
     }
@@ -263,12 +269,16 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     await loadCurrencies()
   }
 
+  const clearError = () => setError(null)
+
   return (
     <CurrencyContext.Provider
       value={{
         currencies,
         defaultCurrency,
         isLoading,
+        error,
+        clearError,
         addCurrency,
         updateCurrency,
         deleteCurrency,

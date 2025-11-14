@@ -14,6 +14,18 @@ import type {
   TransactionQueryParams,
   StatisticsQueryParams,
 } from '@/types'
+import { getFriendlyErrorMessage, isNetworkError } from '@/utils/error'
+
+const GUEST_ROUTE_DELAY_MS = 2000
+
+/**
+ * Simulate backend latency for guest routes
+ */
+async function simulateGuestRouteDelay(
+  delayMs: number = GUEST_ROUTE_DELAY_MS
+): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
 
 /**
  * Check if guest mode is active
@@ -63,6 +75,7 @@ async function handleGuestModeRequest(
   endpoint: string,
   options?: RequestInit
 ): Promise<any> {
+  await simulateGuestRouteDelay()
   const method = options?.method || 'GET'
   const url = new URL(endpoint, typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
   const path = url.pathname
@@ -416,10 +429,12 @@ export async function apiCall<T = any>(
       const result = await handleGuestModeRequest(endpoint, options)
       return result as ApiResponse<T>
     } catch (error) {
+      const message = getFriendlyErrorMessage(error, 'Failed to process request.')
       return {
         success: false,
         error: {
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message,
+          code: isNetworkError(error) ? 'NETWORK_ERROR' : 'UNKNOWN_ERROR',
         },
       }
     }
@@ -460,11 +475,12 @@ export async function apiCall<T = any>(
     const data = await response.json()
     return data as ApiResponse<T>
   } catch (error) {
+    const message = getFriendlyErrorMessage(error, 'Unable to reach the server. Please try again.')
     return {
       success: false,
       error: {
-        message: error instanceof Error ? error.message : 'Network error',
-        code: 'NETWORK_ERROR',
+        message,
+        code: isNetworkError(error) ? 'NETWORK_ERROR' : 'UNKNOWN_ERROR',
       },
     }
   }

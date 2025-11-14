@@ -19,6 +19,7 @@ import {
   IconButton,
   Tooltip,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { PageLayout } from '@/components/PageLayout'
@@ -28,6 +29,8 @@ import { useCurrency } from '@/contexts/CurrencyContext'
 import { EditCurrencyModal } from '@/components/EditCurrencyModal'
 import { DeleteCurrencyModal } from '@/components/DeleteCurrencyModal'
 import type { Currency } from '@/types'
+import { ErrorState } from '@/components/ErrorState'
+import { LoadingButton } from '@/components/LoadingButton'
 
 export default function CurrenciesPage() {
   const router = useRouter()
@@ -35,15 +38,18 @@ export default function CurrenciesPage() {
     currencies,
     defaultCurrency,
     isLoading,
+    error,
     addCurrency,
     deleteCurrency,
     setDefaultCurrency,
     importCurrenciesFromTransactions,
+    refreshCurrencies,
   } = useCurrency()
 
   // Create form state
   const [newCode, setNewCode] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -69,6 +75,7 @@ export default function CurrenciesPage() {
   }, [currencies])
 
   const handleImport = async () => {
+    setIsImporting(true)
     try {
       const { added, skipped } = await importCurrenciesFromTransactions()
       setSnackbar({
@@ -82,6 +89,8 @@ export default function CurrenciesPage() {
         message: error?.message || 'Failed to import currencies',
         severity: 'error',
       })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -129,6 +138,10 @@ export default function CurrenciesPage() {
     // Deletion now handled by DeleteCurrencyModal
   }
 
+  const handleRetryCurrencies = () => {
+    refreshCurrencies()
+  }
+
   return (
     <PageLayout>
       <Container maxWidth="md">
@@ -138,11 +151,24 @@ export default function CurrenciesPage() {
             <Button variant="outlined" onClick={() => router.push('/')}>
               Back to Dashboard
             </Button>
-            <Button variant="outlined" onClick={handleImport}>
+            <LoadingButton
+              variant="outlined"
+              onClick={handleImport}
+              loading={isImporting}
+              disabled={isLoading}
+            >
               Import from Database
-            </Button>
+            </LoadingButton>
           </Box>
         </Box>
+
+        {error && (
+          <ErrorState
+            title="Unable to load currencies"
+            message={error}
+            onRetry={handleRetryCurrencies}
+          />
+        )}
 
         {/* Create Currency Form */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
@@ -164,14 +190,15 @@ export default function CurrenciesPage() {
                 }
               }}
             />
-            <Button
+            <LoadingButton
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleCreate}
-              disabled={isLoading || isCreating}
+              loading={isCreating}
+              disabled={isLoading}
             >
               Add
-            </Button>
+            </LoadingButton>
           </Stack>
         </Paper>
 
@@ -186,78 +213,91 @@ export default function CurrenciesPage() {
             )}
           </Box>
           <Divider sx={{ mb: 2 }} />
-          <List>
-            {sortedCurrencies.map((c) => (
-              <ListItem key={c.code} divider>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1">{c.code}</Typography>
-                      {c.isDefault && <Chip size="small" label="Default" color="success" />}
-                    </Box>
-                  }
-                  secondary={
-                    <Typography variant="caption" color="text.secondary">
-                      Created {new Date(c.createdAt).toLocaleString()}
-                    </Typography>
-                  }
+          {isLoading ? (
+            <Box sx={{ py: 2 }}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rectangular"
+                  height={64}
+                  sx={{ borderRadius: 1, mb: index !== 3 ? 2 : 0 }}
                 />
-                <ListItemSecondaryAction>
-                  <Stack direction="row" spacing={1}>
-                    {!c.isDefault && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={async () => {
-                          try {
-                            await setDefaultCurrency(c.code)
-                            setSnackbar({
-                              open: true,
-                              message: `"${c.code}" set as default`,
-                              severity: 'success',
-                            })
-                          } catch (error: any) {
-                            setSnackbar({
-                              open: true,
-                              message: error?.message || 'Failed to set default currency',
-                              severity: 'error',
-                            })
-                          }
-                        }}
-                        disabled={isLoading}
+              ))}
+            </Box>
+          ) : (
+            <List>
+              {sortedCurrencies.map((c) => (
+                <ListItem key={c.code} divider>
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1">{c.code}</Typography>
+                        {c.isDefault && <Chip size="small" label="Default" color="success" />}
+                      </Box>
+                    }
+                    secondary={
+                      <Typography variant="caption" color="text.secondary">
+                        Created {new Date(c.createdAt).toLocaleString()}
+                      </Typography>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Stack direction="row" spacing={1}>
+                      {!c.isDefault && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={async () => {
+                            try {
+                              await setDefaultCurrency(c.code)
+                              setSnackbar({
+                                open: true,
+                                message: `"${c.code}" set as default`,
+                                severity: 'success',
+                              })
+                            } catch (error: any) {
+                              setSnackbar({
+                                open: true,
+                                message: error?.message || 'Failed to set default currency',
+                                severity: 'error',
+                              })
+                            }
+                          }}
+                          disabled={isLoading}
+                        >
+                          Set Default
+                        </Button>
+                      )}
+                      <IconButton
+                        edge="end"
+                        aria-label="edit"
+                        color="primary"
+                        onClick={() => openEdit(c)}
                       >
-                        Set Default
-                      </Button>
-                    )}
-                    <IconButton
-                      edge="end"
-                      aria-label="edit"
-                      color="primary"
-                      onClick={() => openEdit(c)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      color="error"
-                      onClick={() => openDelete(c.code)}
-                      disabled={c.isDefault}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Stack>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-            {sortedCurrencies.length === 0 && (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  No currencies yet. Add one to get started.
-                </Typography>
-              </Box>
-            )}
-          </List>
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        edge="end"
+                        aria-label="delete"
+                        color="error"
+                        onClick={() => openDelete(c.code)}
+                        disabled={c.isDefault}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Stack>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+              {sortedCurrencies.length === 0 && (
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No currencies yet. Add one to get started.
+                  </Typography>
+                </Box>
+              )}
+            </List>
+          )}
         </Paper>
 
         <DeleteCurrencyModal

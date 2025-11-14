@@ -10,11 +10,14 @@ import {
   deleteProfile as deleteProfileDB,
 } from '@/utils/indexedDB'
 import { useApi } from '@/utils/useApi'
+import { getFriendlyErrorMessage } from '@/utils/error'
 
 interface ProfileContextType {
   profiles: Profile[]
   activeProfile: string | null
   isLoading: boolean
+  error: string | null
+  clearError: () => void
   addProfile: (name: string) => Promise<void>
   renameProfile: (oldName: string, newName: string) => Promise<void>
   deleteProfile: (name: string) => Promise<void>
@@ -30,6 +33,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [activeProfile, setActiveProfile] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const initialize = async () => {
@@ -44,12 +48,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const loadProfiles = async () => {
     try {
       setIsLoading(true)
+      setError(null)
       const allProfiles = await getAllProfiles()
       const active = await getActiveProfile()
       setProfiles(allProfiles)
       setActiveProfile(active)
     } catch (error) {
       console.error('Error loading profiles:', error)
+      setError(getFriendlyErrorMessage(error, 'Failed to load profiles.'))
     } finally {
       setIsLoading(false)
     }
@@ -279,12 +285,16 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     await loadProfiles()
   }
 
+  const clearError = () => setError(null)
+
   return (
     <ProfileContext.Provider
       value={{
         profiles,
         activeProfile,
         isLoading,
+        error,
+        clearError,
         addProfile,
         renameProfile,
         deleteProfile,

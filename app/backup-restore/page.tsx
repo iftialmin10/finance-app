@@ -19,6 +19,7 @@ import { useLoading } from '@/contexts/LoadingContext'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material'
 import { guestDataService } from '@/services/guestDataService'
+import { LoadingButton } from '@/components/LoadingButton'
 
 export default function BackupRestorePage() {
   const router = useRouter()
@@ -33,6 +34,7 @@ export default function BackupRestorePage() {
     severity: 'success' | 'error' | 'info' | 'warning'
   }>({ open: false, message: '', severity: 'info' })
 
+  const [isDownloading, setIsDownloading] = useState(false)
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [confirmRestoreOpen, setConfirmRestoreOpen] = useState(false)
   const [confirmTypeOpen, setConfirmTypeOpen] = useState(false)
@@ -42,6 +44,7 @@ export default function BackupRestorePage() {
 
   const handleDownloadClick = async () => {
     try {
+      setIsDownloading(true)
       const response = await api.apiCall<{ csv: string }>('/api/backup')
       if ('success' in response && response.success && response.data?.csv) {
         const csv = response.data.csv
@@ -77,6 +80,8 @@ export default function BackupRestorePage() {
         message: error?.message || 'Failed to generate backup',
         severity: 'error',
       })
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -148,12 +153,17 @@ export default function BackupRestorePage() {
               This backup includes transactions for your app data. Identifiers such as <code>id</code> and <code>user_id</code> are excluded from the CSV.
             </Alert>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <Button variant="contained" onClick={handleDownloadClick}>
+              <LoadingButton variant="contained" onClick={handleDownloadClick} loading={isDownloading}>
                 Download Backup
-              </Button>
-              <Button variant="outlined" color="error" onClick={handleRestoreClick}>
+              </LoadingButton>
+              <LoadingButton
+                variant="outlined"
+                color="error"
+                onClick={handleRestoreClick}
+                loading={isRestoring}
+              >
                 Restore from CSV
-              </Button>
+              </LoadingButton>
               {/* Hidden CSV file input for restore */}
               <input
                 type="file"
@@ -212,14 +222,15 @@ export default function BackupRestorePage() {
             <Button onClick={() => setConfirmTypeOpen(false)} disabled={isRestoring}>
               Cancel
             </Button>
-            <Button
+            <LoadingButton
               variant="contained"
               color="error"
-              disabled={isRestoring || confirmInput.trim() !== requiredConfirmText}
+              loading={isRestoring}
+              disabled={confirmInput.trim() !== requiredConfirmText}
               onClick={performRestore}
             >
               Confirm Restore
-            </Button>
+            </LoadingButton>
           </DialogActions>
         </Dialog>
 

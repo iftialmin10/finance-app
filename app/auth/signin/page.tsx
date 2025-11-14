@@ -7,7 +7,6 @@ import {
   Box,
   Typography,
   TextField,
-  Button,
   Checkbox,
   FormControlLabel,
   Link,
@@ -15,6 +14,8 @@ import {
 } from '@mui/material'
 import { useAuth } from '@/contexts/AuthContext'
 import { Snackbar } from '@/components/Snackbar'
+import { LoadingButton } from '@/components/LoadingButton'
+import { validateEmail, validateRequired } from '@/utils/validation'
 
 export default function SignInPage() {
   const router = useRouter()
@@ -23,37 +24,42 @@ export default function SignInPage() {
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [snackbar, setSnackbar] = useState<{
     open: boolean
     message: string
     severity: 'success' | 'error' | 'info' | 'warning'
   }>({ open: false, message: '', severity: 'info' })
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email)
+  const handleEmailChange = (value: string) => {
+    setEmail(value)
+    setErrors((prev) => ({
+      ...prev,
+      email: validateEmail(value) || undefined,
+    }))
+  }
+
+  const handlePasswordChange = (value: string) => {
+    setPassword(value)
+    setErrors((prev) => ({
+      ...prev,
+      password: validateRequired(value, 'Password is required') || undefined,
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrors({})
-
-    // Validation
-    const newErrors: { email?: string; password?: string } = {}
-    if (!email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!validateEmail(email)) {
-      newErrors.email = 'Please enter a valid email address'
-    }
-    if (!password) {
-      newErrors.password = 'Password is required'
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
+    const emailError = validateEmail(email)
+    const passwordError = validateRequired(password, 'Password is required')
+    if (emailError || passwordError) {
+      setErrors({
+        email: emailError || undefined,
+        password: passwordError || undefined,
+      })
       return
     }
 
+    setIsSubmitting(true)
     try {
       await signIn(email.trim(), password)
       setSnackbar({
@@ -68,6 +74,8 @@ export default function SignInPage() {
         message: error.message || 'Failed to sign in. Please check your credentials.',
         severity: 'error',
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -108,13 +116,13 @@ export default function SignInPage() {
               label="Email Address"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
               error={!!errors.email}
               helperText={errors.email}
               margin="normal"
               required
               autoComplete="email"
-              disabled={authLoading}
+              disabled={authLoading || isSubmitting}
             />
 
             <TextField
@@ -122,13 +130,13 @@ export default function SignInPage() {
               label="Password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => handlePasswordChange(e.target.value)}
               error={!!errors.password}
               helperText={errors.password}
               margin="normal"
               required
               autoComplete="current-password"
-              disabled={authLoading}
+              disabled={authLoading || isSubmitting}
             />
 
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
@@ -137,7 +145,7 @@ export default function SignInPage() {
                   <Checkbox
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    disabled={authLoading}
+                    disabled={authLoading || isSubmitting}
                   />
                 }
                 label="Remember me"
@@ -151,15 +159,23 @@ export default function SignInPage() {
               </Link>
             </Box>
 
-            <Button
+            <LoadingButton
               type="submit"
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2 }}
-              disabled={authLoading}
+              loading={isSubmitting || authLoading}
+              disabled={
+                authLoading ||
+                isSubmitting ||
+                !!errors.email ||
+                !!errors.password ||
+                !email ||
+                !password
+              }
             >
               Sign In
-            </Button>
+            </LoadingButton>
           </Box>
 
           {/* Sign Up Link */}

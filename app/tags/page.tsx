@@ -21,6 +21,7 @@ import {
   IconButton,
   Tooltip,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { PageLayout } from '@/components/PageLayout'
@@ -32,17 +33,20 @@ import { DeleteTagModal } from '@/components/DeleteTagModal'
 import { useTag } from '@/contexts/TagContext'
 import { useProfile } from '@/contexts/ProfileContext'
 import type { TransactionType, Tag } from '@/types'
+import { ErrorState } from '@/components/ErrorState'
+import { LoadingButton } from '@/components/LoadingButton'
 
 export default function TagsPage() {
   const router = useRouter()
   const { activeProfile } = useProfile()
-  const { tags, isLoading, addTag, deleteTag, importTagsFromTransactions } = useTag()
+  const { tags, isLoading, addTag, deleteTag, importTagsFromTransactions, error, refreshTags } = useTag()
 
   // Create tag form state
   const [newTagName, setNewTagName] = useState('')
   const [newTagType, setNewTagType] = useState<TransactionType>('expense')
   const [newTagColor, setNewTagColor] = useState<string>('#1976d2')
   const [isCreating, setIsCreating] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -64,6 +68,7 @@ export default function TagsPage() {
   const incomeTags = useMemo(() => tags.filter((t) => t.type === 'income'), [tags])
 
   const handleImport = async () => {
+    setIsImporting(true)
     try {
       const { added, skipped } = await importTagsFromTransactions()
       setSnackbar({
@@ -77,6 +82,8 @@ export default function TagsPage() {
         message: error?.message || 'Failed to import tags',
         severity: 'error',
       })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -124,6 +131,10 @@ export default function TagsPage() {
     // Deletion now handled by DeleteTagModal
   }
 
+  const handleRetryTags = () => {
+    refreshTags()
+  }
+
   if (!activeProfile) {
     return (
       <PageLayout>
@@ -145,11 +156,24 @@ export default function TagsPage() {
             <Button variant="outlined" onClick={() => router.push('/')}>
               Back to Dashboard
             </Button>
-            <Button variant="outlined" onClick={handleImport}>
+            <LoadingButton
+              variant="outlined"
+              onClick={handleImport}
+              loading={isImporting}
+              disabled={isLoading}
+            >
               Import from Database
-            </Button>
+            </LoadingButton>
           </Box>
         </Box>
+
+        {error && (
+          <ErrorState
+            title="Unable to load tags"
+            message={error}
+            onRetry={handleRetryTags}
+          />
+        )}
 
         {/* Create Tag Form */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
@@ -196,14 +220,15 @@ export default function TagsPage() {
               />
             </Box>
 
-            <Button
+            <LoadingButton
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleCreate}
-              disabled={isLoading || isCreating}
+              loading={isCreating}
+              disabled={isLoading}
             >
               Add
-            </Button>
+            </LoadingButton>
           </Stack>
         </Paper>
 
@@ -213,47 +238,60 @@ export default function TagsPage() {
             Expense Tags
           </Typography>
           <Divider sx={{ mb: 2 }} />
-          <List>
-            {expenseTags.map((tag) => (
-              <ListItem key={tag.id} divider>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <TagChip tag={tag} size="medium" />
-                  <Typography variant="body2" color="text.secondary">
-                    {tag.name}
-                  </Typography>
-                </Stack>
-                <ListItemSecondaryAction>
-                  <Stack direction="row" spacing={1}>
-                    <Tooltip title="Edit tag (coming next step)">
+          {isLoading ? (
+            <Box sx={{ py: 2 }}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rectangular"
+                  height={56}
+                  sx={{ borderRadius: 1, mb: index !== 2 ? 2 : 0 }}
+                />
+              ))}
+            </Box>
+          ) : (
+            <List>
+              {expenseTags.map((tag) => (
+                <ListItem key={tag.id} divider>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <TagChip tag={tag} size="medium" />
+                    <Typography variant="body2" color="text.secondary">
+                      {tag.name}
+                    </Typography>
+                  </Stack>
+                  <ListItemSecondaryAction>
+                    <Stack direction="row" spacing={1}>
+                      <Tooltip title="Edit tag (coming next step)">
+                        <IconButton
+                          edge="end"
+                          aria-label="edit"
+                          color="primary"
+                          onClick={() => openEdit(tag)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
                       <IconButton
                         edge="end"
-                        aria-label="edit"
-                        color="primary"
-                        onClick={() => openEdit(tag)}
+                        aria-label="delete"
+                        color="error"
+                        onClick={() => openDelete(tag)}
                       >
-                        <EditIcon />
+                        <DeleteIcon />
                       </IconButton>
-                    </Tooltip>
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      color="error"
-                      onClick={() => openDelete(tag)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Stack>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-            {expenseTags.length === 0 && (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  No expense tags yet.
-                </Typography>
-              </Box>
-            )}
-          </List>
+                    </Stack>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+              {expenseTags.length === 0 && (
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No expense tags yet.
+                  </Typography>
+                </Box>
+              )}
+            </List>
+          )}
         </Paper>
 
         {/* Income Tags */}
@@ -262,47 +300,60 @@ export default function TagsPage() {
             Income Tags
           </Typography>
           <Divider sx={{ mb: 2 }} />
-          <List>
-            {incomeTags.map((tag) => (
-              <ListItem key={tag.id} divider>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <TagChip tag={tag} size="medium" />
-                  <Typography variant="body2" color="text.secondary">
-                    {tag.name}
-                  </Typography>
-                </Stack>
-                <ListItemSecondaryAction>
-                  <Stack direction="row" spacing={1}>
-                    <Tooltip title="Edit tag (coming next step)">
+          {isLoading ? (
+            <Box sx={{ py: 2 }}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rectangular"
+                  height={56}
+                  sx={{ borderRadius: 1, mb: index !== 2 ? 2 : 0 }}
+                />
+              ))}
+            </Box>
+          ) : (
+            <List>
+              {incomeTags.map((tag) => (
+                <ListItem key={tag.id} divider>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <TagChip tag={tag} size="medium" />
+                    <Typography variant="body2" color="text.secondary">
+                      {tag.name}
+                    </Typography>
+                  </Stack>
+                  <ListItemSecondaryAction>
+                    <Stack direction="row" spacing={1}>
+                      <Tooltip title="Edit tag (coming next step)">
+                        <IconButton
+                          edge="end"
+                          aria-label="edit"
+                          color="primary"
+                          onClick={() => openEdit(tag)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </Tooltip>
                       <IconButton
                         edge="end"
-                        aria-label="edit"
-                        color="primary"
-                        onClick={() => openEdit(tag)}
+                        aria-label="delete"
+                        color="error"
+                        onClick={() => openDelete(tag)}
                       >
-                        <EditIcon />
+                        <DeleteIcon />
                       </IconButton>
-                    </Tooltip>
-                    <IconButton
-                      edge="end"
-                      aria-label="delete"
-                      color="error"
-                      onClick={() => openDelete(tag)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Stack>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-            {incomeTags.length === 0 && (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  No income tags yet.
-                </Typography>
-              </Box>
-            )}
-          </List>
+                    </Stack>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+              {incomeTags.length === 0 && (
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No income tags yet.
+                  </Typography>
+                </Box>
+              )}
+            </List>
+          )}
         </Paper>
 
         <DeleteTagModal

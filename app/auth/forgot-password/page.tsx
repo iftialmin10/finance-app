@@ -7,7 +7,6 @@ import {
   Box,
   Typography,
   TextField,
-  Button,
   Link,
   Alert,
   Paper,
@@ -15,6 +14,8 @@ import {
 import { CheckCircle as CheckCircleIcon } from '@mui/icons-material'
 import { useApi } from '@/utils/useApi'
 import { Snackbar } from '@/components/Snackbar'
+import { LoadingButton } from '@/components/LoadingButton'
+import { validateEmail } from '@/utils/validation'
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
@@ -29,22 +30,18 @@ export default function ForgotPasswordPage() {
     severity: 'success' | 'error' | 'info' | 'warning'
   }>({ open: false, message: '', severity: 'info' })
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email)
+  const handleEmailChange = (value: string) => {
+    setEmail(value)
+    setErrors({
+      email: validateEmail(value) || undefined,
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrors({})
-
-    // Validation
-    if (!email.trim()) {
-      setErrors({ email: 'Email is required' })
-      return
-    }
-    if (!validateEmail(email)) {
-      setErrors({ email: 'Please enter a valid email address' })
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setErrors({ email: emailError })
       return
     }
 
@@ -76,6 +73,11 @@ export default function ForgotPasswordPage() {
   }
 
   const handleResend = async () => {
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setErrors({ email: emailError })
+      return
+    }
     setIsSubmitting(true)
     try {
       const response = await api.forgotPasswordRequest(email.trim())
@@ -143,15 +145,16 @@ export default function ForgotPasswordPage() {
               </Typography>
             </Box>
 
-            <Button
+            <LoadingButton
               fullWidth
               variant="contained"
               onClick={handleResend}
-              disabled={isSubmitting}
+              loading={isSubmitting}
               sx={{ mb: 3 }}
+              disabled={isSubmitting || !!errors.email || !email}
             >
               Resend Reset Link
-            </Button>
+            </LoadingButton>
 
             <Alert severity="info" sx={{ mb: 3 }}>
               <Typography variant="body2" component="div">
@@ -223,7 +226,7 @@ export default function ForgotPasswordPage() {
               label="Email Address"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
               error={!!errors.email}
               helperText={errors.email}
               margin="normal"
@@ -236,16 +239,17 @@ export default function ForgotPasswordPage() {
               We&apos;ll send you a password reset link to your email address.
             </Alert>
 
-            <Button
+            <LoadingButton
               type="submit"
               fullWidth
               variant="contained"
               sx={{ mt: 2 }}
-              disabled={isSubmitting}
+              loading={isSubmitting}
               size="large"
+              disabled={isSubmitting || !!errors.email || !email}
             >
               Send Reset Link
-            </Button>
+            </LoadingButton>
           </Box>
 
           {/* Sign In Link */}

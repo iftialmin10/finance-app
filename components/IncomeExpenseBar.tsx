@@ -10,7 +10,8 @@ import {
   Legend,
   Bar,
 } from 'recharts'
-import { Paper, Typography } from '@mui/material'
+import { Box, Paper, Typography } from '@mui/material'
+import { useMemo } from 'react'
 
 interface IncomeExpenseBarProps {
   title?: string
@@ -27,13 +28,18 @@ export function IncomeExpenseBar({
   height = 360,
   currency,
 }: IncomeExpenseBarProps) {
-  const data = [
-    {
-      name: 'Totals',
-      Income: income,
-      Expense: expense,
-    },
-  ]
+  const chartHeight = Math.max(height - 56, 240)
+
+  const data = useMemo(
+    () => [
+      {
+        name: 'Totals',
+        Income: income,
+        Expense: expense,
+      },
+    ],
+    [income, expense]
+  )
 
   const formatCurrency = (value: number) => {
     try {
@@ -47,21 +53,26 @@ export function IncomeExpenseBar({
   }
 
   return (
-    <Paper elevation={2} sx={{ p: 2, height, minWidth: 0 }}>
-      <Typography variant="subtitle1" sx={{ mb: 1 }}>
+    <Paper
+      elevation={2}
+      sx={{ p: 2, height, minWidth: 0, display: 'flex', flexDirection: 'column' }}
+    >
+      <Typography variant="subtitle1" sx={{ mb: 1, flexShrink: 0 }}>
         {title}
       </Typography>
-      <ResponsiveContainer width="100%" height="90%">
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis tickFormatter={formatCurrency} />
-          <ReTooltip formatter={(value: any) => formatCurrency(value as number)} />
-          <Legend />
-          <Bar dataKey="Income" fill="#43a047" isAnimationActive animationDuration={400} />
-          <Bar dataKey="Expense" fill="#e53935" isAnimationActive animationDuration={400} />
-        </BarChart>
-      </ResponsiveContainer>
+      <Box sx={{ flexGrow: 1, minWidth: 0, width: '100%', minHeight: chartHeight }}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" />
+            <YAxis tickFormatter={formatCurrency} />
+            <ReTooltip formatter={(value: any) => formatCurrency(value as number)} />
+            <Legend />
+            <Bar dataKey="Income" fill="#43a047" isAnimationActive animationDuration={400} />
+            <Bar dataKey="Expense" fill="#e53935" isAnimationActive animationDuration={400} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Box>
     </Paper>
   )
 }

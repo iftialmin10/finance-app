@@ -7,7 +7,6 @@ import {
   Box,
   Typography,
   TextField,
-  Button,
   FormControlLabel,
   Checkbox,
   Paper,
@@ -310,16 +309,17 @@ export default function SetPasswordPage() {
               </Box>
             )}
 
-            <Button
+            <LoadingButton
               type="submit"
               fullWidth
               variant="contained"
               sx={{ mt: 3 }}
-              disabled={isSubmitting || !allRequirementsMet(password) || password !== confirmPassword}
+              loading={isSubmitting}
+              disabled={!allRequirementsMet(password) || password !== confirmPassword}
               size="large"
             >
               Create Account
-            </Button>
+            </LoadingButton>
           </Box>
         </Paper>
       </Box>

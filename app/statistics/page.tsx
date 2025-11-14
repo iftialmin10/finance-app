@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -17,6 +18,7 @@ import {
   Grid,
   Card,
   CardContent,
+  Skeleton,
 } from '@mui/material'
 import { PageLayout } from '@/components/PageLayout'
 import { Snackbar } from '@/components/Snackbar'
@@ -26,10 +28,40 @@ import { useApi } from '@/utils/useApi'
 import { formatAmount } from '@/utils/amount'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import type { StatisticsData, Transaction } from '@/types'
-import { ExpenseBreakdownPie } from '@/components/ExpenseBreakdownPie'
-import { IncomeExpenseBar } from '@/components/IncomeExpenseBar'
+import { ErrorState } from '@/components/ErrorState'
+import { getFriendlyErrorMessage } from '@/utils/error'
+import { AnimatedSection } from '@/components/AnimatedSection'
 
 const EXPENSE_COLORS = ['#e53935', '#d32f2f', '#ef5350', '#f44336', '#ff7043', '#ff8a65']
+
+const ChartSkeleton = ({ height = 360 }: { height?: number }) => (
+  <Paper elevation={2} sx={{ p: 3, height }}>
+    <Skeleton variant="text" width="40%" height={28} />
+    <Skeleton variant="rectangular" height={height - 80} sx={{ mt: 2, borderRadius: 1 }} />
+  </Paper>
+)
+
+const ExpenseBreakdownPie = dynamic(
+  () =>
+    import('@/components/ExpenseBreakdownPie').then((mod) => ({
+      default: mod.ExpenseBreakdownPie,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={420} />,
+  }
+)
+
+const IncomeExpenseBar = dynamic(
+  () =>
+    import('@/components/IncomeExpenseBar').then((mod) => ({
+      default: mod.IncomeExpenseBar,
+    })),
+  {
+    ssr: false,
+    loading: () => <ChartSkeleton height={360} />,
+  }
+)
 
 export default function StatisticsPage() {
   const router = useRouter()
@@ -60,8 +92,10 @@ export default function StatisticsPage() {
   const [currency, setCurrency] = useState<string>('')
 
   // Data
+  const [profileTransactions, setProfileTransactions] = useState<Transaction[]>([])
   const [stats, setStats] = useState<StatisticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   // Snackbar
   const [snackbar, setSnackbar] = useState<{
@@ -70,36 +104,58 @@ export default function StatisticsPage() {
     severity: 'success' | 'error' | 'info' | 'warning'
   }>({ open: false, message: '', severity: 'info' })
 
-  // Load available years and initialize filters
+  // Load transactions once per profile for derived data
   useEffect(() => {
-    const init = async () => {
-      if (!activeProfile) return
+    if (!activeProfile) {
+      setProfileTransactions([])
+      const fallbackYear = new Date().getFullYear()
+      setYears([fallbackYear])
+      setSelectedYear(fallbackYear)
+      setCurrencyOptions([])
+      setCurrency('')
+      return
+    }
+
+    let isMounted = true
+    const loadProfileTransactions = async () => {
       try {
         const txRes = await api.getTransactions({ profile: activeProfile })
-        if (txRes.success && txRes.data) {
-          const txs = txRes.data.transactions as Transaction[]
-          const yearSet = new Set<number>()
-          txs.forEach((t) => {
-            const year = new Date(t.occurredAt).getFullYear()
-            yearSet.add(year)
-          })
-          const derivedYears = Array.from(yearSet).sort((a, b) => b - a)
-          const fallbackYears =
-            derivedYears.length > 0
-              ? derivedYears
-              : [new Date().getFullYear()]
-          setYears(fallbackYears)
-          // Initialize year to most recent
-          setSelectedYear(fallbackYears[0])
+        if (isMounted && txRes.success && txRes.data) {
+          setProfileTransactions(txRes.data.transactions as Transaction[])
         }
       } catch (e) {
-        // On failure, fall back to current year
-        setYears([new Date().getFullYear()])
+        if (isMounted) {
+          setProfileTransactions([])
+        }
       }
     }
-    init()
+
+    loadProfileTransactions()
+    return () => {
+      isMounted = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProfile])
+
+  // Derive available years from cached transactions
+  const derivedYears = useMemo(() => {
+    if (profileTransactions.length === 0) {
+      return [new Date().getFullYear()]
+    }
+    const yearSet = new Set<number>()
+    profileTransactions.forEach((t) => {
+      yearSet.add(new Date(t.occurredAt).getFullYear())
+    })
+    return Array.from(yearSet).sort((a, b) => b - a)
+  }, [profileTransactions])
+
+  useEffect(() => {
+    setYears(derivedYears)
+    if (!derivedYears.includes(selectedYear)) {
+      setSelectedYear(derivedYears[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedYears])
 
   // Compute date range from filters
   const { from, to } = useMemo(() => {
@@ -121,71 +177,75 @@ export default function StatisticsPage() {
     }
   }, [selectedYear, selectedMonth])
 
-  // Update currency options when period changes
-  useEffect(() => {
-    const loadCurrenciesForPeriod = async () => {
-      if (!activeProfile) return
-      try {
-        const txRes = await api.getTransactions({
-          profile: activeProfile,
-          from,
-          to,
-        })
-        if (txRes.success && txRes.data) {
-          const txs = txRes.data.transactions as Transaction[]
-          const setCodes = new Set<string>()
-          txs.forEach((t) => {
-            if (t.currency) setCodes.add(t.currency)
-          })
-          const options = Array.from(setCodes).sort()
-          setCurrencyOptions(options)
-          if (!options.includes(currency)) {
-            setCurrency(options[0] || '')
-          }
-        }
-      } catch (e) {
-        setCurrencyOptions([])
-        setCurrency('')
+  // Derive currency options from cached transactions within range
+  const derivedCurrencyOptions = useMemo(() => {
+    if (profileTransactions.length === 0) return []
+    const fromDate = new Date(from)
+    const toDate = new Date(to)
+    const codes = new Set<string>()
+    profileTransactions.forEach((t) => {
+      const occurred = new Date(t.occurredAt)
+      if (occurred >= fromDate && occurred <= toDate && t.currency) {
+        codes.add(t.currency)
       }
-    }
-    loadCurrenciesForPeriod()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile, from, to])
+    })
+    return Array.from(codes).sort()
+  }, [profileTransactions, from, to])
 
-  // Load statistics when filters are ready
   useEffect(() => {
-    const loadStats = async () => {
-      if (!activeProfile || !currency) {
-        setStats(null)
-        return
-      }
-      try {
-        setIsLoading(true)
-        const res = await api.getStatistics({
-          profile: activeProfile,
-          from,
-          to,
-          currency,
-        })
-        if (res.success && res.data) {
-          setStats(res.data)
-        } else {
-          setStats(null)
-        }
-      } catch (error: any) {
-        setStats(null)
-        setSnackbar({
-          open: true,
-          message: error?.message || 'Failed to load statistics',
-          severity: 'error',
-        })
-      } finally {
-        setIsLoading(false)
-      }
+    setCurrencyOptions(derivedCurrencyOptions)
+    if (derivedCurrencyOptions.length === 0) {
+      setCurrency('')
+    } else if (!derivedCurrencyOptions.includes(currency)) {
+      setCurrency(derivedCurrencyOptions[0])
     }
+  }, [derivedCurrencyOptions, currency])
+
+  const loadStats = useCallback(async () => {
+    if (!activeProfile || !currency) {
+      setStats(null)
+      setStatsError(null)
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      setStatsError(null)
+      const res = await api.getStatistics({
+        profile: activeProfile,
+        from,
+        to,
+        currency,
+      })
+
+      if (res.success && res.data) {
+        setStats(res.data)
+        setStatsError(null)
+      } else {
+        setStats(null)
+        setStatsError(res.error?.message || 'Failed to load statistics.')
+      }
+    } catch (error: any) {
+      const message = getFriendlyErrorMessage(error, 'Failed to load statistics.')
+      setStats(null)
+      setStatsError(message)
+      setSnackbar({
+        open: true,
+        message,
+        severity: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [activeProfile, from, to, currency, api])
+
+  useEffect(() => {
     loadStats()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile, from, to, currency])
+  }, [loadStats])
+
+  const handleRetryStats = () => {
+    loadStats()
+  }
 
   const hasData = stats && (stats.summary.totalIncome.amountMinor > 0 || stats.summary.totalExpense.amountMinor > 0)
 
@@ -228,66 +288,89 @@ export default function StatisticsPage() {
           </Button>
         </Box>
 
+        {statsError && (
+          <ErrorState
+            title="Unable to load statistics"
+            message={statsError}
+            onRetry={handleRetryStats}
+          />
+        )}
+
         {/* Filters */}
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Filters
-          </Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <FormControl sx={{ minWidth: 140 }}>
-              <InputLabel>Year</InputLabel>
-              <Select
-                value={selectedYear}
-                label="Year"
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-              >
-                {years.map((y) => (
-                  <MenuItem key={y} value={y}>
-                    {y}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+        <AnimatedSection>
+          <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Filters
+            </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl sx={{ minWidth: 140 }}>
+                <InputLabel>Year</InputLabel>
+                <Select
+                  value={selectedYear}
+                  label="Year"
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                >
+                  {years.map((y) => (
+                    <MenuItem key={y} value={y}>
+                      {y}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-            <FormControl sx={{ minWidth: 180 }}>
-              <InputLabel>Month</InputLabel>
-              <Select
-                value={selectedMonth}
-                label="Month"
-                onChange={(e) =>
-                  setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))
-                }
-              >
-                <MenuItem value="all">All months</MenuItem>
-                {months.map((m) => (
-                  <MenuItem key={m.value} value={m.value}>
-                    {m.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              <FormControl sx={{ minWidth: 180 }}>
+                <InputLabel>Month</InputLabel>
+                <Select
+                  value={selectedMonth}
+                  label="Month"
+                  onChange={(e) =>
+                    setSelectedMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))
+                  }
+                >
+                  <MenuItem value="all">All months</MenuItem>
+                  {months.map((m) => (
+                    <MenuItem key={m.value} value={m.value}>
+                      {m.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-            <FormControl sx={{ minWidth: 180 }} disabled={currencyOptions.length === 0}>
-              <InputLabel>Currency</InputLabel>
-              <Select
-                value={currency}
-                label="Currency"
-                onChange={(e) => setCurrency(String(e.target.value))}
-              >
-                {currencyOptions.map((c) => (
-                  <MenuItem key={c} value={c}>
-                    {c}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
-        </Paper>
+              <FormControl sx={{ minWidth: 180 }} disabled={currencyOptions.length === 0}>
+                <InputLabel>Currency</InputLabel>
+                <Select
+                  value={currency}
+                  label="Currency"
+                  onChange={(e) => setCurrency(String(e.target.value))}
+                >
+                  {currencyOptions.map((c) => (
+                    <MenuItem key={c} value={c}>
+                      {c}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </Paper>
+        </AnimatedSection>
 
         {/* Content */}
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress />
+        {!statsError && (isLoading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Grid container spacing={2}>
+              {[0, 1, 2].map((item) => (
+                <Grid key={item} size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
+                  <Card sx={{ p: 2 }}>
+                    <Skeleton variant="text" width="40%" />
+                    <Skeleton variant="text" height={36} />
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              <Skeleton variant="text" width="30%" height={28} />
+              <Skeleton variant="rectangular" height={240} sx={{ mt: 2, borderRadius: 1 }} />
+            </Paper>
           </Box>
         ) : !currency || !hasData ? (
           <EmptyState
@@ -300,66 +383,68 @@ export default function StatisticsPage() {
           />
         ) : (
           <>
-            {/* Summary Cards */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Card sx={{ borderLeft: '4px solid', borderColor: 'success.main' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Total Income
-                    </Typography>
-                    <Typography variant="h5" color="success.main">
-                      {formatAmount(stats!.summary.totalIncome.amountMinor, currency)}
-                    </Typography>
-                  </CardContent>
-                </Card>
+            <AnimatedSection delay={50}>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
+                  <Card sx={{ borderLeft: '4px solid', borderColor: 'success.main' }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Total Income
+                      </Typography>
+                      <Typography variant="h5" color="success.main">
+                        {formatAmount(stats!.summary.totalIncome.amountMinor, currency)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
+                  <Card sx={{ borderLeft: '4px solid', borderColor: 'error.main' }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Total Expense
+                      </Typography>
+                      <Typography variant="h5" color="error.main">
+                        {formatAmount(stats!.summary.totalExpense.amountMinor, currency)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
+                  <Card sx={{ borderLeft: '4px solid', borderColor: 'primary.main' }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Net Balance
+                      </Typography>
+                      <Typography
+                        variant="h5"
+                        color={
+                          stats!.summary.netBalance.amountMinor >= 0 ? 'success.main' : 'error.main'
+                        }
+                      >
+                        {formatAmount(stats!.summary.netBalance.amountMinor, currency)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Card sx={{ borderLeft: '4px solid', borderColor: 'error.main' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Total Expense
-                    </Typography>
-                    <Typography variant="h5" color="error.main">
-                      {formatAmount(stats!.summary.totalExpense.amountMinor, currency)}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <Card sx={{ borderLeft: '4px solid', borderColor: 'primary.main' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Net Balance
-                    </Typography>
-                    <Typography
-                      variant="h5"
-                      color={
-                        stats!.summary.netBalance.amountMinor >= 0 ? 'success.main' : 'error.main'
-                      }
-                    >
-                      {formatAmount(stats!.summary.netBalance.amountMinor, currency)}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
+            </AnimatedSection>
 
-            {/* Charts */}
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12, md: 12 }}>
-                <ExpenseBreakdownPie items={pieData} height={420} />
+            <AnimatedSection delay={120}>
+              <Grid container spacing={3}>
+                <Grid size={{ xs: 12 }} sx={{ minWidth: 0 }}>
+                  <ExpenseBreakdownPie items={pieData} height={420} />
+                </Grid>
+                <Grid size={{ xs: 12, md: 5 }} sx={{ minWidth: 0 }}>
+                  <IncomeExpenseBar
+                    income={incomeMajor}
+                    expense={expenseMajor}
+                    currency={currency}
+                  />
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12, md: 5 }}>
-                <IncomeExpenseBar
-                  income={incomeMajor}
-                  expense={expenseMajor}
-                  currency={currency}
-                />
-              </Grid>
-            </Grid>
+            </AnimatedSection>
           </>
-        )}
+        ))}
 
         <Snackbar
           open={snackbar.open}

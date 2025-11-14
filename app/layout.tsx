@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { Providers } from '@/components/Providers'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export const metadata: Metadata = {
   title: 'Finance App',
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <ThemeProvider>
-          <Providers>{children}</Providers>
+          <ErrorBoundary>
+            <Providers>{children}</Providers>
+          </ErrorBoundary>
         </ThemeProvider>
       </body>
     </html>

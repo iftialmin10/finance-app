@@ -10,10 +10,13 @@ import {
 } from '@/utils/indexedDB'
 import { useProfile } from './ProfileContext'
 import { useApi } from '@/utils/useApi'
+import { getFriendlyErrorMessage } from '@/utils/error'
 
 interface TagContextType {
   tags: Tag[]
   isLoading: boolean
+  error: string | null
+  clearError: () => void
   getTagsByType: (type: TransactionType) => Tag[]
   addTag: (
     name: string,
@@ -34,6 +37,7 @@ export function TagProvider({ children }: { children: ReactNode }) {
   const api = useApi()
   const [tags, setTags] = useState<Tag[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (activeProfile) {
@@ -49,10 +53,12 @@ export function TagProvider({ children }: { children: ReactNode }) {
 
     try {
       setIsLoading(true)
+      setError(null)
       const profileTags = await getTagsForProfile(activeProfile)
       setTags(profileTags)
     } catch (error) {
       console.error('Error loading tags:', error)
+      setError(getFriendlyErrorMessage(error, 'Failed to load tags.'))
     } finally {
       setIsLoading(false)
     }
@@ -310,11 +316,15 @@ export function TagProvider({ children }: { children: ReactNode }) {
     await loadTags()
   }
 
+  const clearError = () => setError(null)
+
   return (
     <TagContext.Provider
       value={{
         tags,
         isLoading,
+        error,
+        clearError,
         getTagsByType,
         addTag,
         updateTag,

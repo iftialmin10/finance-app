@@ -8,7 +8,8 @@ import {
   Tooltip as ReTooltip,
   Legend,
 } from 'recharts'
-import { Paper, Typography } from '@mui/material'
+import { Box, Paper, Typography } from '@mui/material'
+import { useMemo } from 'react'
 
 export interface ExpensePieItem {
   name: string
@@ -29,37 +30,48 @@ export function ExpenseBreakdownPie({
   items,
   height = 360,
 }: ExpenseBreakdownPieProps) {
-  const data = items.map((item, idx) => ({
-    ...item,
-    color: item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
-  }))
+  const chartHeight = Math.max(height - 56, 240)
+
+  const data = useMemo(
+    () =>
+      items.map((item, idx) => ({
+        ...item,
+        color: item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+      })),
+    [items]
+  )
 
   return (
-    <Paper elevation={2} sx={{ p: 2, height, minWidth: 0 }}>
-      <Typography variant="subtitle1" sx={{ mb: 1 }}>
+    <Paper
+      elevation={2}
+      sx={{ p: 2, height, minWidth: 0, display: 'flex', flexDirection: 'column' }}
+    >
+      <Typography variant="subtitle1" sx={{ mb: 1, flexShrink: 0 }}>
         {title}
       </Typography>
-      <ResponsiveContainer width="100%" height="90%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            outerRadius={110}
-            label
-            isAnimationActive
-            animationDuration={400}
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color!} />
-            ))}
-          </Pie>
-          <ReTooltip />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
+      <Box sx={{ flexGrow: 1, minWidth: 0, width: '100%', minHeight: chartHeight }}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={110}
+              label
+              isAnimationActive
+              animationDuration={400}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color!} />
+              ))}
+            </Pie>
+            <ReTooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </Box>
     </Paper>
   )
 }

@@ -28,6 +28,7 @@ import { useProfile } from '@/contexts/ProfileContext'
 import { useCurrency } from '@/contexts/CurrencyContext'
 import { useTag } from '@/contexts/TagContext'
 import { Snackbar } from '@/components/Snackbar'
+import { LoadingButton } from '@/components/LoadingButton'
 
 const steps = ['Welcome', 'Create Profile', 'Choose Currency', 'Initialize']
 
@@ -94,6 +95,8 @@ export default function SetupPage() {
     currency?: string
   }>({})
   const [isInitializing, setIsInitializing] = useState(false)
+  const [isCreatingProfileLoading, setIsCreatingProfileLoading] = useState(false)
+  const [isSelectingCurrency, setIsSelectingCurrency] = useState(false)
   const [initializationProgress, setInitializationProgress] = useState(0)
   const [snackbar, setSnackbar] = useState<{
     open: boolean
@@ -213,6 +216,7 @@ export default function SetupPage() {
     isCreatingProfileRef.current = true
     
     try {
+      setIsCreatingProfileLoading(true)
       const trimmedName = profileName.trim()
       await addProfile(trimmedName)
       
@@ -259,6 +263,8 @@ export default function SetupPage() {
         message: error.message || 'Failed to create profile',
         severity: 'error',
       })
+    } finally {
+      setIsCreatingProfileLoading(false)
     }
   }
 
@@ -274,6 +280,7 @@ export default function SetupPage() {
     }
 
     try {
+      setIsSelectingCurrency(true)
       await addCurrency(currencyCode, true) // Set as default
       setSnackbar({
         open: true,
@@ -287,6 +294,8 @@ export default function SetupPage() {
         message: error.message || 'Failed to add currency',
         severity: 'error',
       })
+    } finally {
+      setIsSelectingCurrency(false)
     }
   }
 
@@ -564,29 +573,32 @@ export default function SetupPage() {
             </Button>
             <Box>
               {activeStep === 1 ? (
-                <Button
+                <LoadingButton
                   variant="contained"
                   onClick={handleCreateProfile}
+                  loading={isCreatingProfileLoading}
                   disabled={profilesLoading || !profileName.trim()}
                 >
                   Create Profile
-                </Button>
+                </LoadingButton>
               ) : activeStep === 2 && showCurrencyStep ? (
-                <Button
+                <LoadingButton
                   variant="contained"
                   onClick={handleSelectCurrency}
+                  loading={isSelectingCurrency}
                   disabled={currenciesLoading}
                 >
                   Continue
-                </Button>
+                </LoadingButton>
               ) : activeStep === 3 ? (
-                <Button
+                <LoadingButton
                   variant="contained"
                   onClick={handleInitialize}
+                  loading={isInitializing}
                   disabled={isInitializing}
                 >
-                  {isInitializing ? 'Initializing...' : 'Complete Setup'}
-                </Button>
+                  Complete Setup
+                </LoadingButton>
               ) : (
                 <Button variant="contained" onClick={handleNext}>
                   Continue

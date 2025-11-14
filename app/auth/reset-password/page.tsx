@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material'
 import { useApi } from '@/utils/useApi'
 import { Snackbar } from '@/components/Snackbar'
+import { LoadingButton } from '@/components/LoadingButton'
 
 type PasswordStrength = 'weak' | 'medium' | 'strong'
 type PageState = 'verifying' | 'form' | 'success' | 'error'
@@ -499,16 +500,17 @@ function ResetPasswordPageContent() {
               </Box>
             )}
 
-            <Button
+            <LoadingButton
               type="submit"
               fullWidth
               variant="contained"
               sx={{ mt: 3 }}
-              disabled={isSubmitting || !allRequirementsMet(password) || password !== confirmPassword}
+              loading={isSubmitting}
+              disabled={!allRequirementsMet(password) || password !== confirmPassword}
               size="large"
             >
               Reset Password
-            </Button>
+            </LoadingButton>
           </Box>
         </Paper>
       </Box>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
   Container,
@@ -28,6 +29,7 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -38,8 +40,6 @@ import {
 } from '@mui/icons-material'
 import { PageLayout } from '@/components/PageLayout'
 import { EmptyState } from '@/components/EmptyState'
-import { EditTransactionModal } from '@/components/EditTransactionModal'
-import { DeleteTransactionModal } from '@/components/DeleteTransactionModal'
 import { Snackbar } from '@/components/Snackbar'
 import { useProfile } from '@/contexts/ProfileContext'
 import { useTag } from '@/contexts/TagContext'
@@ -47,6 +47,25 @@ import { useApi } from '@/utils/useApi'
 import { formatAmount } from '@/utils/amount'
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns'
 import type { Transaction, TransactionType } from '@/types'
+import { ErrorState } from '@/components/ErrorState'
+import { getFriendlyErrorMessage } from '@/utils/error'
+import { AnimatedSection } from '@/components/AnimatedSection'
+
+const EditTransactionModal = dynamic(
+  () =>
+    import('@/components/EditTransactionModal').then((mod) => ({
+      default: mod.EditTransactionModal,
+    })),
+  { loading: () => null, ssr: false }
+)
+
+const DeleteTransactionModal = dynamic(
+  () =>
+    import('@/components/DeleteTransactionModal').then((mod) => ({
+      default: mod.DeleteTransactionModal,
+    })),
+  { loading: () => null, ssr: false }
+)
 
 interface MonthGroup {
   year: number
@@ -77,6 +96,7 @@ export default function TransactionsPage() {
   // Data state
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
 
   // Dialog state
@@ -91,50 +111,62 @@ export default function TransactionsPage() {
     severity: 'success' | 'error' | 'info' | 'warning'
   }>({ open: false, message: '', severity: 'info' })
 
-  // Load transactions
-  useEffect(() => {
-    const loadTransactions = async () => {
-      if (!activeProfile) {
-        setIsLoading(false)
-        return
-      }
-
-      try {
-        setIsLoading(true)
-        const params: any = {
-          profile: activeProfile,
-        }
-
-        if (dateFrom) params.from = dateFrom
-        if (dateTo) params.to = dateTo
-
-        const response = await api.getTransactions(params)
-
-        if (response.success && response.data) {
-          setTransactions(response.data.transactions || [])
-          // Expand first month by default
-          if (response.data.transactions && response.data.transactions.length > 0) {
-            const firstTransaction = response.data.transactions[0]
-            const firstDate = parseISO(firstTransaction.occurredAt)
-            const firstMonthKey = `${firstDate.getFullYear()}-${firstDate.getMonth()}`
-            setExpandedMonths(new Set([firstMonthKey]))
-          }
-        }
-      } catch (error) {
-        console.error('Error loading transactions:', error)
-        setSnackbar({
-          open: true,
-          message: 'Failed to load transactions',
-          severity: 'error',
-        })
-      } finally {
-        setIsLoading(false)
-      }
+  const loadTransactions = useCallback(async () => {
+    if (!activeProfile) {
+      setTransactions([])
+      setIsLoading(false)
+      setLoadError(null)
+      return
     }
 
+    try {
+      setIsLoading(true)
+      setLoadError(null)
+
+      const params: any = {
+        profile: activeProfile,
+      }
+
+      if (dateFrom) params.from = dateFrom
+      if (dateTo) params.to = dateTo
+
+      const response = await api.getTransactions(params)
+
+      if (response.success && response.data) {
+        const txs = response.data.transactions || []
+        setTransactions(txs)
+
+        if (txs.length > 0) {
+          const firstTransaction = txs[0]
+          const firstDate = parseISO(firstTransaction.occurredAt)
+          const firstMonthKey = `${firstDate.getFullYear()}-${firstDate.getMonth()}`
+          setExpandedMonths(new Set([firstMonthKey]))
+        }
+      } else {
+        setTransactions([])
+        setLoadError(response.error?.message || 'Failed to load transactions.')
+      }
+    } catch (error) {
+      const message = getFriendlyErrorMessage(error, 'Failed to load transactions.')
+      setTransactions([])
+      setLoadError(message)
+      setSnackbar({
+        open: true,
+        message,
+        severity: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [activeProfile, dateFrom, dateTo, api])
+
+  useEffect(() => {
     loadTransactions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProfile, dateFrom, dateTo])
+  }, [loadTransactions])
+
+  const handleRetryLoad = () => {
+    loadTransactions()
+  }
 
   // Filter and group transactions
   const groupedTransactions = useMemo(() => {
@@ -242,20 +274,7 @@ export default function TransactionsPage() {
       severity: 'success',
     })
 
-    // Reload transactions
-    if (activeProfile) {
-      const params: any = {
-        profile: activeProfile,
-      }
-
-      if (dateFrom) params.from = dateFrom
-      if (dateTo) params.to = dateTo
-
-      const response = await api.getTransactions(params)
-      if (response.success && response.data) {
-        setTransactions(response.data.transactions || [])
-      }
-    }
+    await loadTransactions()
   }
 
   const handleDeleteClick = (transaction: Transaction) => {
@@ -279,17 +298,7 @@ export default function TransactionsPage() {
         })
 
         // Reload transactions with current filters
-        const params: any = {
-          profile: activeProfile!,
-        }
-
-        if (dateFrom) params.from = dateFrom
-        if (dateTo) params.to = dateTo
-
-        const reloadResponse = await api.getTransactions(params)
-        if (reloadResponse.success && reloadResponse.data) {
-          setTransactions(reloadResponse.data.transactions || [])
-        }
+        await loadTransactions()
 
         setDeleteDialogOpen(false)
         setTransactionToDelete(null)
@@ -360,93 +369,114 @@ export default function TransactionsPage() {
         </Box>
 
         {/* Filter Controls */}
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Filters
-          </Typography>
+        <AnimatedSection>
+          <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Filters
+            </Typography>
 
-          {/* Type Filter Tabs */}
-          <Box sx={{ mb: 3 }}>
-            <Tabs
-              value={typeFilter}
-              onChange={(_, newValue) => setTypeFilter(newValue)}
-              sx={{ borderBottom: 1, borderColor: 'divider' }}
-            >
-              <Tab label={`All (${transactionCounts.all})`} value="all" />
-              <Tab label={`Expense (${transactionCounts.expenses})`} value="expense" />
-              <Tab label={`Income (${transactionCounts.incomes})`} value="income" />
-            </Tabs>
-          </Box>
-
-          {/* Other Filters */}
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
-            {/* Tag Filter */}
-            <FormControl sx={{ minWidth: { xs: '100%', md: 200 } }}>
-              <InputLabel>Tag</InputLabel>
-              <Select
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
-                label="Tag"
+            {/* Type Filter Tabs */}
+            <Box sx={{ mb: 3 }}>
+              <Tabs
+                value={typeFilter}
+                onChange={(_, newValue) => setTypeFilter(newValue)}
+                sx={{ borderBottom: 1, borderColor: 'divider' }}
               >
-                <MenuItem value="all">All Tags</MenuItem>
-                {availableTags.map((tag) => (
-                  <MenuItem key={tag} value={tag}>
-                    {tag}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            {/* Search */}
-            <TextField
-              placeholder="Search transactions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              InputProps={{
-                startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
-              }}
-              sx={{ flex: 1 }}
-            />
-
-            {/* Date Range (Optional) */}
-            <Box sx={{ display: 'flex', gap: 1, minWidth: { xs: '100%', md: 300 } }}>
-              <TextField
-                label="From"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="To"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ flex: 1 }}
-              />
-              {(dateFrom || dateTo) && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => {
-                    setDateFrom('')
-                    setDateTo('')
-                  }}
-                  sx={{ alignSelf: 'flex-end' }}
-                >
-                  Clear
-                </Button>
-              )}
+                <Tab label={`All (${transactionCounts.all})`} value="all" />
+                <Tab label={`Expense (${transactionCounts.expenses})`} value="expense" />
+                <Tab label={`Income (${transactionCounts.incomes})`} value="income" />
+              </Tabs>
             </Box>
-          </Box>
-        </Paper>
+
+            {/* Other Filters */}
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
+              {/* Tag Filter */}
+              <FormControl sx={{ minWidth: { xs: '100%', md: 200 } }}>
+                <InputLabel>Tag</InputLabel>
+                <Select
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  label="Tag"
+                >
+                  <MenuItem value="all">All Tags</MenuItem>
+                  {availableTags.map((tag) => (
+                    <MenuItem key={tag} value={tag}>
+                      {tag}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              {/* Search */}
+              <TextField
+                placeholder="Search transactions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                }}
+                sx={{ flex: 1 }}
+              />
+
+              {/* Date Range (Optional) */}
+              <Box sx={{ display: 'flex', gap: 1, minWidth: { xs: '100%', md: 300 } }}>
+                <TextField
+                  label="From"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="To"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+                {(dateFrom || dateTo) && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => {
+                      setDateFrom('')
+                      setDateTo('')
+                    }}
+                    sx={{ alignSelf: 'flex-end' }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </Box>
+            </Box>
+          </Paper>
+        </AnimatedSection>
 
         {/* Transactions List */}
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-            <CircularProgress />
+        {loadError ? (
+          <ErrorState
+            title="Unable to load transactions"
+            message={loadError}
+            onRetry={handleRetryLoad}
+          />
+        ) : isLoading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              <Skeleton variant="text" width="30%" height={32} />
+              <Skeleton variant="rectangular" height={56} sx={{ mt: 2, borderRadius: 1 }} />
+            </Paper>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  variant="rectangular"
+                  height={72}
+                  sx={{ borderRadius: 1, mb: index !== 2 ? 2 : 0 }}
+                />
+              ))}
+            </Paper>
           </Box>
         ) : groupedTransactions.length === 0 ? (
           <EmptyState
@@ -480,7 +510,8 @@ export default function TransactionsPage() {
             }
           />
         ) : (
-          <Box>
+          <AnimatedSection delay={80}>
+            <Box>
             {groupedTransactions.map((group) => {
               const monthKey = `${group.year}-${group.month}`
               const isExpanded = expandedMonths.has(monthKey)
@@ -586,7 +617,8 @@ export default function TransactionsPage() {
                 </Accordion>
               )
             })}
-          </Box>
+            </Box>
+          </AnimatedSection>
         )}
 
         {/* Edit Transaction Modal */}
