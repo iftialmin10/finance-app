@@ -53,33 +53,3 @@ npm run build
 ```bash
 npm start
 ```
-
-## Development Plan
-
-See [plan.md](./plan.md) for the complete development plan with phases.
-
-## Technology Stack
-
-- **Framework**: Next.js 14+ (App Router)
-- **Language**: TypeScript
-- **UI Library**: Material-UI (MUI) v7.3.5
-- **Icons**: Material-UI Icons v7.3.5
-- **Charts**: Recharts v3.3.0
-- **Mock Data**: Faker.js v10.1.0
-- **Date Utilities**: date-fns v4.1.0
-
-## Installed Dependencies
-
-### Core
-- `@mui/material` - Material-UI component library
-- `@mui/icons-material` - Material-UI icons
-- `@emotion/react` & `@emotion/styled` - Required for MUI styling
-- `recharts` - Chart library for data visualization
-- `@faker-js/faker` - Mock data generation
-- `date-fns` - Date manipulation utilities
-
-## Status
-
-Phase 1, Step 1: ✅ Complete - Next.js project initialized with TypeScript and App Router structure.
-Phase 1, Step 2: ✅ Complete - All dependencies installed and verified.
-
