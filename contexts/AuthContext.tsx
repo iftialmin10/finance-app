@@ -164,9 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      if (!isGuestMode) {
-        await api.logout()
-      }
+      await api.logout()
       
       // Clear all frontend data
       // 1. Clear all IndexedDB data (profiles, tags, currencies, settings, guest mode)

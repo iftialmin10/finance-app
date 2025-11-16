@@ -34,6 +34,7 @@ import { getFriendlyErrorMessage } from '@/utils/error'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import type { StatisticsData } from '@/types'
 import { AnimatedSection } from '@/components/AnimatedSection'
+import { LoadingButton } from '@/components/LoadingButton'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   const [statistics, setStatistics] = useState<StatisticsData | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   // EARLY RETURN: If not authenticated (no real user), don't render anything (StartupRedirect will handle redirect)
   if (!authLoading && !user) {
@@ -160,9 +162,15 @@ export default function DashboardPage() {
   )
 
   const handleSignOut = useCallback(async () => {
-    await signOut()
-    router.push('/')
-  }, [signOut, router])
+    setIsSigningOut(true)
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Error signing out:', error)
+    } finally {
+      setIsSigningOut(false)
+    }
+  }, [signOut])
 
   // Check authentication first - redirect to sign-in if not authenticated
   useEffect(() => {
@@ -415,15 +423,16 @@ export default function DashboardPage() {
 
         <AnimatedSection delay={150}>
           <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
-            <Button
+            <LoadingButton
               variant="contained"
               color="error"
               startIcon={<LogoutIcon />}
               onClick={handleSignOut}
+              loading={isSigningOut}
               sx={{ minWidth: 220 }}
             >
               Sign Out
-            </Button>
+            </LoadingButton>
           </Box>
         </AnimatedSection>
       </Box>
