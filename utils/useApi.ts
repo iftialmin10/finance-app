@@ -22,7 +22,6 @@ import {
   previewProfileRename as apiPreviewProfileRename,
   renameProfile as apiRenameProfile,
   previewProfileDelete as apiPreviewProfileDelete,
-  deleteProfile as apiDeleteProfile,
   importProfiles as apiImportProfiles,
   previewTagRename as apiPreviewTagRename,
   renameTag as apiRenameTag,
@@ -140,10 +139,6 @@ export function useApi() {
 
       previewProfileDelete: async (profile: string) => {
         return callWithLoading(() => apiPreviewProfileDelete(profile))
-      },
-
-      deleteProfile: async (profile: string) => {
-        return callWithLoading(() => apiDeleteProfile(profile))
       },
 
       importProfiles: async () => {

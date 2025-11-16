@@ -8,6 +8,8 @@ import {
   DialogActions,
   Button,
 } from '@mui/material'
+import { DialogTransition } from './DialogTransition'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -36,6 +38,9 @@ export function ConfirmDialog({
       onClose={onCancel}
       aria-labelledby="confirm-dialog-title"
       aria-describedby="confirm-dialog-description"
+      TransitionComponent={DialogTransition}
+      keepMounted
+      PaperProps={{ sx: standardDialogPaperSx }}
     >
       <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
       <DialogContent>

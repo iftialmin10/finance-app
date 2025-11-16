@@ -14,6 +14,7 @@ import {
 } from '@mui/material'
 import { useCurrency } from '@/contexts/CurrencyContext'
 import { useApi } from '@/utils/useApi'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface DeleteCurrencyModalProps {
   open: boolean
@@ -81,7 +82,11 @@ export function DeleteCurrencyModal({
   const deletionBlocked = (affectedCount ?? 0) > 0
 
   return (
-    <Dialog open={open} onClose={() => !isDeleting && onClose()}>
+    <Dialog
+      open={open}
+      onClose={() => !isDeleting && onClose()}
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Delete Currency</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

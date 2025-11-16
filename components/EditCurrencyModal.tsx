@@ -12,6 +12,7 @@ import {
 } from '@mui/material'
 import type { Currency } from '@/types'
 import { useCurrency } from '@/contexts/CurrencyContext'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface EditCurrencyModalProps {
   open: boolean
@@ -84,7 +85,11 @@ export function EditCurrencyModal({
   }
 
   return (
-    <Dialog open={open} onClose={() => !isSaving && onClose()}>
+    <Dialog
+      open={open}
+      onClose={() => !isSaving && onClose()}
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Edit Currency</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>

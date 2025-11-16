@@ -13,6 +13,14 @@ import { useApi } from '@/utils/useApi'
 import { getFriendlyErrorMessage } from '@/utils/error'
 import { useAuth } from './AuthContext'
 
+interface DeleteProfileOptions {
+  /**
+   * Optional affected transaction count from a preview call.
+   * When provided, the context will not re-fetch the preview.
+   */
+  affectedCount?: number | null
+}
+
 interface ProfileContextType {
   profiles: Profile[]
   activeProfile: string | null
@@ -21,7 +29,7 @@ interface ProfileContextType {
   clearError: () => void
   addProfile: (name: string) => Promise<void>
   renameProfile: (oldName: string, newName: string) => Promise<void>
-  deleteProfile: (name: string) => Promise<void>
+  deleteProfile: (name: string, options?: DeleteProfileOptions) => Promise<void>
   switchProfile: (name: string) => Promise<void>
   refreshProfiles: () => Promise<void>
   importProfilesFromTransactions: () => Promise<{ added: number; skipped: number }>
@@ -253,34 +261,30 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     await loadProfiles()
   }
 
-  const deleteProfile = async (name: string) => {
+  const deleteProfile = async (name: string, options?: DeleteProfileOptions) => {
     // Validate
     if (activeProfile === name) {
       throw new Error('Cannot delete the active profile. Please switch to another profile first.')
     }
 
-    // Preview delete to check if profile is used
-    const previewResponse = await api.previewProfileDelete(name)
-    if (!previewResponse.success) {
-      throw new Error(
-        previewResponse.error?.message || 'Failed to preview profile delete'
-      )
-    }
+    let affectedCount = options?.affectedCount ?? null
 
-    const affectedCount = previewResponse.data?.affectedCount || 0
+    if (affectedCount === null || affectedCount === undefined) {
+      // Preview delete to check if profile is used
+      const previewResponse = await api.previewProfileDelete(name)
+      if (!previewResponse.success) {
+        throw new Error(
+          previewResponse.error?.message || 'Failed to preview profile delete'
+        )
+      }
+
+      affectedCount = previewResponse.data?.affectedCount ?? 0
+    }
 
     // If profile is used in transactions, block deletion
-    if (affectedCount > 0) {
+    if ((affectedCount ?? 0) > 0) {
       throw new Error(
         `Cannot delete profile: it is used in ${affectedCount} transaction(s). Please delete or reassign all transactions before deleting the profile.`
-      )
-    }
-
-    // Delete via API (for validation)
-    const deleteResponse = await api.deleteProfile(name)
-    if (!deleteResponse.success) {
-      throw new Error(
-        deleteResponse.error?.message || 'Failed to delete profile'
       )
     }
 

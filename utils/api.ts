@@ -288,16 +288,6 @@ async function handleGuestModeRequest(
     }
   }
 
-  // DELETE /api/profiles
-  if (path === '/api/profiles' && method === 'DELETE') {
-    // In guest mode, profile delete is handled client-side (IndexedDB)
-    // This is just for API compatibility
-    return {
-      success: true,
-      message: 'Profile deleted successfully',
-    }
-  }
-
   // POST /api/profiles/import
   if (path === '/api/profiles/import' && method === 'POST') {
     // In guest mode, profile import is handled client-side
@@ -660,15 +650,6 @@ export async function previewProfileDelete(
 ): Promise<ApiResponse<PreviewResponse>> {
   const queryString = new URLSearchParams({ profile }).toString()
   return apiCall<PreviewResponse>(`/api/profiles/delete/preview?${queryString}`)
-}
-
-export async function deleteProfile(
-  profile: string
-): Promise<ApiResponse<{ message: string }>> {
-  return apiCall<{ message: string }>('/api/profiles', {
-    method: 'DELETE',
-    body: JSON.stringify({ profile }),
-  })
 }
 
 export async function importProfiles(): Promise<

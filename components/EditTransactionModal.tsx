@@ -26,6 +26,7 @@ import { CurrencySelector } from '@/components/CurrencySelector'
 import { useTag } from '@/contexts/TagContext'
 import { useApi } from '@/utils/useApi'
 import type { Transaction, TransactionType } from '@/types'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface EditTransactionModalProps {
   open: boolean
@@ -186,7 +187,11 @@ export function EditTransactionModal({
   if (!transaction) return null
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Edit Transaction</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 2 }}>

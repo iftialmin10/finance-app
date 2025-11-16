@@ -11,9 +11,12 @@ import {
   Box,
   CircularProgress,
   Alert,
+  Fade,
 } from '@mui/material'
 import { useApi } from '@/utils/useApi'
 import { useProfile } from '@/contexts/ProfileContext'
+import { DialogTransition } from './DialogTransition'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface DeleteProfileModalProps {
   open: boolean
@@ -64,7 +67,7 @@ export function DeleteProfileModal({
   const handleDelete = async () => {
     try {
       setIsDeleting(true)
-      await deleteProfile(profileName)
+      await deleteProfile(profileName, { affectedCount })
       onDeleted?.()
       onClose()
     } catch (error: any) {
@@ -78,28 +81,45 @@ export function DeleteProfileModal({
   const deletionBlocked = (affectedCount ?? 0) > 0
 
   return (
-    <Dialog open={open} onClose={() => !isDeleting && onClose()}>
+    <Dialog
+      open={open}
+      onClose={() => !isDeleting && onClose()}
+      TransitionComponent={DialogTransition}
+      keepMounted
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Delete Profile</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Profile: <strong>{profileName}</strong>
         </Typography>
-        {isLoadingPreview ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={16} />
-            <Typography variant="caption" color="text.secondary">
-              Checking usage...
-            </Typography>
-          </Box>
-        ) : deletionBlocked ? (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            Cannot delete this profile. It is used in {affectedCount} transaction(s).
-          </Alert>
-        ) : (
-          <Alert severity="warning" sx={{ mt: 1 }}>
-            This action cannot be undone. The profile will be permanently deleted.
-          </Alert>
-        )}
+        <Box
+          sx={{
+            minHeight: 120,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+        >
+          {isLoadingPreview ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} />
+              <Typography variant="caption" color="text.secondary">
+                Checking usage...
+              </Typography>
+            </Box>
+          ) : deletionBlocked ? (
+            <Alert severity="error" sx={{ width: '100%' }}>
+              Cannot delete this profile. It is used in {affectedCount} transaction(s).
+            </Alert>
+          ) : (
+            <Fade in timeout={300} appear mountOnEnter unmountOnExit>
+              <Alert severity="warning" sx={{ width: '100%' }}>
+                This action cannot be undone. The profile will be permanently deleted.
+              </Alert>
+            </Fade>
+          )}
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={isDeleting}>

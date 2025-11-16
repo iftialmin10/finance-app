@@ -22,6 +22,7 @@ import { useTag } from '@/contexts/TagContext'
 import { useProfile } from '@/contexts/ProfileContext'
 import { useApi } from '@/utils/useApi'
 import { ConfirmDialog } from './ConfirmDialog'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface EditTagModalProps {
   open: boolean
@@ -157,7 +158,11 @@ export function EditTagModal({
 
   return (
     <>
-      <Dialog open={open} onClose={() => !isSaving && onClose()}>
+      <Dialog
+        open={open}
+        onClose={() => !isSaving && onClose()}
+        PaperProps={{ sx: standardDialogPaperSx }}
+      >
         <DialogTitle>Edit Tag</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>

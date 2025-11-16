@@ -17,6 +17,7 @@ import {
 } from '@mui/material'
 import { useState } from 'react'
 import { useCurrency } from '@/contexts/CurrencyContext'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface CurrencySelectorProps {
   value: string
@@ -114,7 +115,11 @@ export function CurrencySelector({
         )}
       </FormControl>
 
-      <Dialog open={addDialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={addDialogOpen}
+        onClose={handleCloseDialog}
+        PaperProps={{ sx: standardDialogPaperSx }}
+      >
         <DialogTitle>Add New Currency</DialogTitle>
         <DialogContent>
           <TextField

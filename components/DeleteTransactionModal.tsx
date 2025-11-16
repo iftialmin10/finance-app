@@ -14,6 +14,7 @@ import {
 import { formatAmount } from '@/utils/amount'
 import { format, parseISO } from 'date-fns'
 import type { Transaction } from '@/types'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface DeleteTransactionModalProps {
   open: boolean
@@ -33,7 +34,11 @@ export function DeleteTransactionModal({
   if (!transaction) return null
 
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Delete Transaction</DialogTitle>
       <DialogContent>
         <Typography variant="body1" paragraph>

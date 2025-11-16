@@ -92,11 +92,10 @@
 ### Profile Management
 - `GET /api/profiles/rename/preview` — Preview how many transactions will be affected by renaming a profile. See [Profile Rename Preview API](./api/profiles-rename-preview.md)
 - `POST /api/profiles/rename` — Rename a profile and update all transactions in the database. See [Profile Rename API](./api/profiles-rename.md)
-- `GET /api/profiles/delete/preview` — Preview how many transactions will be deleted when deleting a profile. See [Profile Delete Preview API](./api/profiles-delete-preview.md)
-- `DELETE /api/profiles` — Delete a profile by permanently removing all transactions with that profile. See [Profile Delete API](./api/profiles-delete.md)
+- `GET /api/profiles/delete/preview` — Preview how many transactions reference a profile. See [Profile Delete Preview API](./api/profiles-delete-preview.md)
 - `GET /api/transactions` — Used for importing profiles from database. See [API Response Documentation](./api/transactions-list.md) and [Profiles Import API](./api/profiles-import.md)
 
-**Note:** Profile management operations (create, switch) are performed client-side using IndexedDB. However, when renaming or deleting a profile, the system first calls a preview API to show how many transactions will be affected, then after user confirmation, calls the actual operation API to update or delete transactions in the database. The transactions API is also used for the "Import from Database" feature to extract profile names from existing transactions.
+**Note:** Profile management operations (create, switch, delete) are performed client-side using IndexedDB. Renaming a profile still requires an API call to update transactions in the database, but deletion now relies solely on the preview API—if the preview shows zero affected transactions, the profile is removed locally with no further backend calls. The transactions API is also used for the "Import from Database" feature to extract profile names from existing transactions.
 
 **Storage:** Profiles are stored locally in IndexedDB. Transactions are stored in PostgreSQL (Neon) with profile names embedded in each transaction record. When a profile is renamed, both IndexedDB and all related transactions in the database are updated.
 
@@ -107,7 +106,7 @@
 - **Switch Profile**: Set any profile as active (instant, no API calls)
 - **Create Profile**: Add new profiles with unique names
 - **Rename Profile**: Update profile name in IndexedDB and all transactions in database - [See Rename Modal](#rename-profile-modal)
-- **Delete Profile**: Remove profile from IndexedDB only if no transactions use it - [See Delete Modal](#delete-profile-modal)
+- **Delete Profile**: Remove profile from IndexedDB only if no transactions use it (validated via preview only; no backend delete call) - [See Delete Modal](#delete-profile-modal)
 - **Import from Database**: Scan transactions and auto-populate profiles
 - **Profile Auto-Population**: Automatically runs at app startup if IndexedDB is empty
 
@@ -182,7 +181,7 @@ ManageProfiles
      - No backend initialization needed (tags and transactions will be created with profile name when first used)
    - **Rename Profile**: Select Profile → [Open Rename Modal](#rename-profile-modal) → Enter New Name → Call `GET /api/profiles/rename/preview` to get affected count → Show confirmation dialog with count → User confirms → Call `POST /api/profiles/rename` to update all transactions in database → Update profile name in IndexedDB → 
      - All transactions in PostgreSQL with old profile name are updated to use the new name
-   - **Delete Profile**: Select Profile (non-active) → Call `GET /api/profiles/delete/preview` to check if profile is used → [Open Delete Modal](#delete-profile-modal) with count → If profile is used, show error and block deletion → If not used, Confirm → Call `DELETE /api/profiles` to validate deletion → Remove from IndexedDB →
+   - **Delete Profile**: Select Profile (non-active) → Call `GET /api/profiles/delete/preview` to check if profile is used → [Open Delete Modal](#delete-profile-modal) with count → If profile is used, show error and block deletion → If not used, Confirm → Remove from IndexedDB →
      - Deletion is only allowed if no transactions contain the profile
 4. Success Message
 
@@ -190,7 +189,7 @@ ManageProfiles
 
 - Profile management (create, switch) happens client-side (IndexedDB)
 - Profile renaming requires API call to update database transactions
-- Profile deletion requires API call to permanently delete all transactions with that profile
+- Profile deletion happens entirely client-side after preview confirms there are no transactions referencing the profile
 - Existing transactions in database are updated when renaming a profile
 - Profile rename operations update all user's transactions that have the old profile name
 - Profile delete operations permanently remove all user's transactions that have the profile name
@@ -342,9 +341,8 @@ RenameProfileModal
    - System validates:
      - Profile is not the currently active profile
      - Profile exists in IndexedDB
-   - If valid: 
-     - Calls `DELETE /api/profiles` to validate deletion
-     - Removes profile from IndexedDB
+   - If valid:
+     - Removes profile from IndexedDB (no backend delete request)
    - Modal closes
    - Profile list refreshes (deleted profile removed)
    - Success message displayed: "Profile deleted successfully."
@@ -377,7 +375,7 @@ DeleteProfileModal
 - **Active profile deletion attempt**: Button is disabled, no modal opens
 - **Preview errors**: If preview API fails, shows error "Failed to check affected transactions. Please try again."
 - **IndexedDB errors**: Shows error message "Failed to delete profile. Please try again."
-- **API errors**: If validation fails (profile is in use), shows error "Cannot delete profile: it is used in X transactions. Please delete or reassign all transactions before deleting the profile."
+- **Preview result (profile is in use)**: Shows error "Cannot delete profile: it is used in X transactions. Please delete or reassign all transactions before deleting the profile."
 - **Network errors**: Shows error "Failed to delete profile. Please check your connection and try again."
 - **Success feedback**: Toast notification "Profile deleted successfully."
 
@@ -387,7 +385,7 @@ DeleteProfileModal
 - If any transactions use the profile, deletion is blocked with an error message
 - The profile is removed from IndexedDB only after validation confirms no transactions use it
 - If all profiles are deleted, user will see empty state and can create a new profile
-- Delete operation requires API call to validate that no transactions reference the profile
+- Delete operation relies solely on the preview API; once it reports zero transactions, removal happens locally
 - Cannot delete the currently active profile (must switch to another profile first)
-- The API validates that no transactions contain the profile before allowing deletion
+- The preview API validates that no transactions contain the profile before allowing deletion
 

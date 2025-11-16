@@ -15,6 +15,8 @@ import {
 import { useApi } from '@/utils/useApi'
 import { useProfile } from '@/contexts/ProfileContext'
 import { ConfirmDialog } from './ConfirmDialog'
+import { DialogTransition } from './DialogTransition'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface RenameProfileModalProps {
   open: boolean
@@ -108,7 +110,13 @@ export function RenameProfileModal({
 
   return (
     <>
-      <Dialog open={open} onClose={() => !isSaving && onClose()}>
+      <Dialog
+        open={open}
+        onClose={() => !isSaving && onClose()}
+        TransitionComponent={DialogTransition}
+        keepMounted
+        PaperProps={{ sx: standardDialogPaperSx }}
+      >
         <DialogTitle>Rename Profile</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>

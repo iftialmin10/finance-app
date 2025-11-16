@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material'
 import { guestDataService } from '@/services/guestDataService'
 import { LoadingButton } from '@/components/LoadingButton'
+import { standardDialogPaperSx } from '@/components/dialogSizing'
 
 export default function BackupRestorePage() {
   const router = useRouter()
@@ -218,7 +219,11 @@ export default function BackupRestorePage() {
         />
 
         {/* Second confirmation: type-to-confirm */}
-        <Dialog open={confirmTypeOpen} onClose={() => !isRestoring && setConfirmTypeOpen(false)}>
+        <Dialog
+          open={confirmTypeOpen}
+          onClose={() => !isRestoring && setConfirmTypeOpen(false)}
+          PaperProps={{ sx: standardDialogPaperSx }}
+        >
           <DialogTitle>Type to Confirm</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>

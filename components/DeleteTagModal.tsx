@@ -16,6 +16,7 @@ import type { Tag } from '@/types'
 import { useApi } from '@/utils/useApi'
 import { useProfile } from '@/contexts/ProfileContext'
 import { useTag } from '@/contexts/TagContext'
+import { standardDialogPaperSx } from './dialogSizing'
 
 interface DeleteTagModalProps {
   open: boolean
@@ -82,7 +83,11 @@ export function DeleteTagModal({
   const deletionBlocked = (affectedCount ?? 0) > 0
 
   return (
-    <Dialog open={open} onClose={() => !isDeleting && onClose()}>
+    <Dialog
+      open={open}
+      onClose={() => !isDeleting && onClose()}
+      PaperProps={{ sx: standardDialogPaperSx }}
+    >
       <DialogTitle>Delete Tag</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

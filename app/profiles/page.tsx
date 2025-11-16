@@ -18,11 +18,12 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   IconButton,
   Divider,
   Skeleton,
+  Collapse,
 } from '@mui/material'
+import { TransitionGroup } from 'react-transition-group'
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -55,7 +56,6 @@ export default function ProfilesPage() {
 
   // Create form state
   const [newProfileName, setNewProfileName] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
 
   // Rename dialog state
@@ -109,7 +109,6 @@ export default function ProfilesPage() {
       return
     }
     try {
-      setIsCreating(true)
       await addProfile(newProfileName.trim())
       setNewProfileName('')
       setSnackbar({
@@ -123,8 +122,6 @@ export default function ProfilesPage() {
         message: error?.message || 'Failed to create profile',
         severity: 'error',
       })
-    } finally {
-      setIsCreating(false)
     }
   }
 
@@ -203,7 +200,7 @@ export default function ProfilesPage() {
                 value={newProfileName}
                 onChange={(e) => setNewProfileName(e.target.value)}
                 fullWidth
-                disabled={isLoading || isCreating}
+                disabled={isLoading}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
@@ -211,15 +208,14 @@ export default function ProfilesPage() {
                   }
                 }}
               />
-              <LoadingButton
+              <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={handleCreate}
-                loading={isCreating}
                 disabled={isLoading}
               >
                 Add
-              </LoadingButton>
+              </Button>
             </Stack>
           </Paper>
         </AnimatedSection>
@@ -235,7 +231,7 @@ export default function ProfilesPage() {
             )}
           </Box>
           <Divider sx={{ mb: 2 }} />
-          {isLoading ? (
+          {isLoading && profiles.length === 0 ? (
             <Box sx={{ py: 2 }}>
               {Array.from({ length: 3 }).map((_, index) => (
                 <Skeleton
@@ -248,72 +244,92 @@ export default function ProfilesPage() {
             </Box>
           ) : (
             <List>
-              {profiles.map((p) => (
-                <ListItem key={p.name} divider>
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="subtitle1">{p.name}</Typography>
-                        {p.name === activeProfile && (
-                          <Chip size="small" label="Active" color="success" />
+              <TransitionGroup component={null}>
+                {profiles.map((p) => (
+                  <Collapse key={p.name}>
+                    <ListItem
+                      divider
+                      sx={{
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        gap: { xs: 1.5, sm: 0 },
+                      }}
+                    >
+                      <ListItemText
+                        sx={{ flexGrow: 1, width: '100%' }}
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="subtitle1">{p.name}</Typography>
+                            {p.name === activeProfile && (
+                              <Chip size="small" label="Active" color="success" />
+                            )}
+                          </Box>
+                        }
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            Created {new Date(p.createdAt).toLocaleString()}
+                          </Typography>
+                        }
+                      />
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{
+                          width: { xs: '100%', sm: 'auto' },
+                          justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                          flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                          mt: { xs: 1, sm: 0 },
+                        }}
+                      >
+                        {p.name !== activeProfile && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            sx={{ whiteSpace: 'nowrap' }}
+                            onClick={async () => {
+                              try {
+                                await switchProfile(p.name)
+                                setSnackbar({
+                                  open: true,
+                                  message: `Switched to "${p.name}"`,
+                                  severity: 'success',
+                                })
+                              } catch (error: any) {
+                                setSnackbar({
+                                  open: true,
+                                  message: error?.message || 'Failed to switch profile',
+                                  severity: 'error',
+                                })
+                              }
+                            }}
+                            disabled={isLoading}
+                          >
+                            Set Active
+                          </Button>
                         )}
-                      </Box>
-                    }
-                    secondary={
-                      <Typography variant="caption" color="text.secondary">
-                        Created {new Date(p.createdAt).toLocaleString()}
-                      </Typography>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <Stack direction="row" spacing={1}>
-                      {p.name !== activeProfile && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={async () => {
-                            try {
-                              await switchProfile(p.name)
-                              setSnackbar({
-                                open: true,
-                                message: `Switched to "${p.name}"`,
-                                severity: 'success',
-                              })
-                            } catch (error: any) {
-                              setSnackbar({
-                                open: true,
-                                message: error?.message || 'Failed to switch profile',
-                                severity: 'error',
-                              })
-                            }
-                          }}
+                        <IconButton
+                          edge="end"
+                          aria-label="rename"
+                          onClick={() => openRename(p.name)}
                           disabled={isLoading}
+                          color="primary"
                         >
-                          Set Active
-                        </Button>
-                      )}
-                      <IconButton
-                        edge="end"
-                        aria-label="rename"
-                        onClick={() => openRename(p.name)}
-                        disabled={isLoading}
-                        color="primary"
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        edge="end"
-                        aria-label="delete"
-                        onClick={() => openDelete(p.name)}
-                        disabled={isLoading || p.name === activeProfile}
-                        color="error"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Stack>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => openDelete(p.name)}
+                          disabled={isLoading || p.name === activeProfile}
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Stack>
+                    </ListItem>
+                  </Collapse>
+                ))}
+              </TransitionGroup>
               {profiles.length === 0 && (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
                   <Typography variant="body1" color="text.secondary">
