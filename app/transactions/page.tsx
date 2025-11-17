@@ -541,9 +541,30 @@ export default function TransactionsPage() {
                   sx={{ mb: 2 }}
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
-                      <Typography variant="h6">{group.monthLabel}</Typography>
-                      <Box sx={{ display: 'flex', gap: 3 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        width: '100%',
+                        pr: { xs: 0, sm: 2 },
+                        columnGap: { xs: 2, sm: 4 },
+                        rowGap: { xs: 1, sm: 0 },
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Typography variant="h6" sx={{ flexShrink: 0 }}>
+                        {group.monthLabel}
+                      </Typography>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          gap: { xs: 1.5, sm: 3 },
+                          flexWrap: 'wrap',
+                          justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                          flexGrow: 1,
+                        }}
+                      >
                         <Typography variant="body2" color="success.main">
                           Income: {formatAmount(group.summary.income, group.summary.currency)}
                         </Typography>
@@ -612,6 +633,7 @@ export default function TransactionsPage() {
                               <TableCell align="right">
                                 <IconButton
                                   size="small"
+                                  onMouseDown={(event) => event.preventDefault()}
                                   onClick={() => handleEditClick(transaction)}
                                   color="primary"
                                 >
@@ -619,6 +641,7 @@ export default function TransactionsPage() {
                                 </IconButton>
                                 <IconButton
                                   size="small"
+                                  onMouseDown={(event) => event.preventDefault()}
                                   onClick={() => handleDeleteClick(transaction)}
                                   color="error"
                                 >

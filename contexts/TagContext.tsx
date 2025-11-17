@@ -12,6 +12,11 @@ import { useProfile } from './ProfileContext'
 import { useApi } from '@/utils/useApi'
 import { getFriendlyErrorMessage } from '@/utils/error'
 
+interface DeleteTagOptions {
+  skipPreview?: boolean
+  affectedCount?: number
+}
+
 interface TagContextType {
   tags: Tag[]
   isLoading: boolean
@@ -25,7 +30,7 @@ interface TagContextType {
   ) => Promise<void>
   updateTag: (id: string, updates: Partial<Tag>) => Promise<void>
   renameTag: (id: string, newName: string) => Promise<void>
-  deleteTag: (id: string) => Promise<void>
+  deleteTag: (id: string, options?: DeleteTagOptions) => Promise<void>
   refreshTags: () => Promise<void>
   importTagsFromTransactions: () => Promise<{ added: number; skipped: number }>
 }
@@ -49,11 +54,14 @@ export function TagProvider({ children }: { children: ReactNode }) {
     }
   }, [activeProfile])
 
-  const loadTags = async () => {
+  const loadTags = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
     if (!activeProfile) return
 
     try {
-      setIsLoading(true)
+      if (!silent) {
+        setIsLoading(true)
+      }
       setError(null)
       const profileTags = await getTagsForProfile(activeProfile)
       setTags(profileTags)
@@ -61,7 +69,9 @@ export function TagProvider({ children }: { children: ReactNode }) {
       console.error('Error loading tags:', error)
       setError(getFriendlyErrorMessage(error, 'Failed to load tags.'))
     } finally {
-      setIsLoading(false)
+      if (!silent) {
+        setIsLoading(false)
+      }
     }
   }
 
@@ -97,7 +107,7 @@ export function TagProvider({ children }: { children: ReactNode }) {
     await addTagDB(activeProfile, trimmedName, type, color)
 
     // Reload tags
-    await loadTags()
+    await loadTags({ silent: true })
   }
 
   const updateTag = async (id: string, updates: Partial<Tag>) => {
@@ -137,7 +147,7 @@ export function TagProvider({ children }: { children: ReactNode }) {
     await updateTagDB(id, updates)
 
     // Reload tags
-    await loadTags()
+    await loadTags({ silent: true })
   }
 
   const renameTag = async (id: string, newName: string) => {
@@ -198,10 +208,10 @@ export function TagProvider({ children }: { children: ReactNode }) {
     await updateTagDB(id, { name: trimmedNewName })
 
     // Reload tags
-    await loadTags()
+    await loadTags({ silent: true })
   }
 
-  const deleteTag = async (id: string) => {
+  const deleteTag = async (id: string, options?: DeleteTagOptions) => {
     if (!activeProfile) {
       throw new Error('No active profile selected')
     }
@@ -212,15 +222,18 @@ export function TagProvider({ children }: { children: ReactNode }) {
       throw new Error('Tag not found')
     }
 
-    // Preview delete to check if tag is used
-    const previewResponse = await api.previewTagDelete(tag.name, activeProfile)
-    if (!previewResponse.success) {
-      throw new Error(
-        previewResponse.error?.message || 'Failed to preview tag delete'
-      )
-    }
+    let affectedCount = options?.affectedCount ?? 0
 
-    const affectedCount = previewResponse.data?.affectedCount || 0
+    if (!options?.skipPreview) {
+      // Preview delete to check if tag is used
+      const previewResponse = await api.previewTagDelete(tag.name, activeProfile)
+      if (!previewResponse.success) {
+        throw new Error(
+          previewResponse.error?.message || 'Failed to preview tag delete'
+        )
+      }
+      affectedCount = previewResponse.data?.affectedCount || 0
+    }
 
     // If tag is used in transactions, block deletion
     if (affectedCount > 0) {
@@ -229,19 +242,11 @@ export function TagProvider({ children }: { children: ReactNode }) {
       )
     }
 
-    // Delete via API (for validation)
-    const deleteResponse = await api.deleteTag(tag.name, activeProfile)
-    if (!deleteResponse.success) {
-      throw new Error(
-        deleteResponse.error?.message || 'Failed to delete tag'
-      )
-    }
-
-    // Delete from IndexedDB
+    // Delete from IndexedDB (no API call required once validated)
     await deleteTagDB(id)
 
     // Reload tags
-    await loadTags()
+    await loadTags({ silent: true })
   }
 
   /**

@@ -158,6 +158,7 @@ export default function ProfilesPage() {
         <IconButton
           edge="end"
           aria-label="rename"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => openRename(p.name)}
           disabled={isLoading}
           color="primary"
@@ -167,6 +168,7 @@ export default function ProfilesPage() {
         <IconButton
           edge="end"
           aria-label="delete"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => openDelete(p.name)}
           disabled={isLoading || p.name === activeProfile}
           color="error"

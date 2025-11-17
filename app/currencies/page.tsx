@@ -301,13 +301,20 @@ export default function CurrenciesPage() {
                             Set Default
                           </Button>
                         )}
-                        <IconButton edge="end" aria-label="edit" color="primary" onClick={() => openEdit(currency)}>
+                        <IconButton
+                          edge="end"
+                          aria-label="edit"
+                          color="primary"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => openEdit(currency)}
+                        >
                           <EditIcon />
                         </IconButton>
                         <IconButton
                           edge="end"
                           aria-label="delete"
                           color="error"
+                          onMouseDown={(event) => event.preventDefault()}
                           onClick={() => openDelete(currency.code)}
                           disabled={currency.isDefault}
                         >

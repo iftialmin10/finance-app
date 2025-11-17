@@ -69,7 +69,10 @@ export function DeleteTagModal({
     if (!tag) return
     try {
       setIsDeleting(true)
-      await deleteTag(tag.id)
+      await deleteTag(tag.id, {
+        skipPreview: true,
+        affectedCount: affectedCount ?? 0,
+      })
       onDeleted?.()
       onClose()
     } catch (error: any) {

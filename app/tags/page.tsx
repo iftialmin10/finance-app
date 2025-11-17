@@ -22,6 +22,7 @@ import {
   Tooltip,
   Alert,
   Skeleton,
+  Collapse,
 } from '@mui/material'
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { PageLayout } from '@/components/PageLayout'
@@ -35,6 +36,7 @@ import { useProfile } from '@/contexts/ProfileContext'
 import type { TransactionType, Tag } from '@/types'
 import { ErrorState } from '@/components/ErrorState'
 import { LoadingButton } from '@/components/LoadingButton'
+import { TransitionGroup } from 'react-transition-group'
 
 export default function TagsPage() {
   const router = useRouter()
@@ -134,6 +136,44 @@ export default function TagsPage() {
   const handleRetryTags = () => {
     refreshTags()
   }
+
+  const renderTagItems = (tagList: Tag[]) => (
+    <List sx={{ py: 0 }}>
+      <TransitionGroup component={null}>
+        {tagList.map((tag) => (
+          <Collapse key={tag.id} component="div" timeout={240}>
+            <ListItem divider component="li" sx={{ listStyle: 'none' }}>
+              <TagChip tag={tag} size="medium" />
+              <ListItemSecondaryAction>
+                <Stack direction="row" spacing={1}>
+                  <Tooltip title="Edit tag (coming next step)">
+                    <IconButton
+                      edge="end"
+                      aria-label="edit"
+                      color="primary"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => openEdit(tag)}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <IconButton
+                    edge="end"
+                    aria-label="delete"
+                    color="error"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => openDelete(tag)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Stack>
+              </ListItemSecondaryAction>
+            </ListItem>
+          </Collapse>
+        ))}
+      </TransitionGroup>
+    </List>
+  )
 
   if (!activeProfile) {
     return (
@@ -266,43 +306,14 @@ export default function TagsPage() {
                 />
               ))}
             </Box>
+          ) : expenseTags.length > 0 ? (
+            renderTagItems(expenseTags)
           ) : (
-            <List>
-              {expenseTags.map((tag) => (
-                <ListItem key={tag.id} divider>
-                  <TagChip tag={tag} size="medium" />
-                  <ListItemSecondaryAction>
-                    <Stack direction="row" spacing={1}>
-                      <Tooltip title="Edit tag (coming next step)">
-                        <IconButton
-                          edge="end"
-                          aria-label="edit"
-                          color="primary"
-                          onClick={() => openEdit(tag)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton
-                        edge="end"
-                        aria-label="delete"
-                        color="error"
-                        onClick={() => openDelete(tag)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Stack>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-              {expenseTags.length === 0 && (
-                <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No expense tags yet.
-                  </Typography>
-                </Box>
-              )}
-            </List>
+            <Box sx={{ py: 4, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                No expense tags yet.
+              </Typography>
+            </Box>
           )}
         </Paper>
 
@@ -323,43 +334,14 @@ export default function TagsPage() {
                 />
               ))}
             </Box>
+          ) : incomeTags.length > 0 ? (
+            renderTagItems(incomeTags)
           ) : (
-            <List>
-              {incomeTags.map((tag) => (
-                <ListItem key={tag.id} divider>
-                  <TagChip tag={tag} size="medium" />
-                  <ListItemSecondaryAction>
-                    <Stack direction="row" spacing={1}>
-                      <Tooltip title="Edit tag (coming next step)">
-                        <IconButton
-                          edge="end"
-                          aria-label="edit"
-                          color="primary"
-                          onClick={() => openEdit(tag)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <IconButton
-                        edge="end"
-                        aria-label="delete"
-                        color="error"
-                        onClick={() => openDelete(tag)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Stack>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-              {incomeTags.length === 0 && (
-                <Box sx={{ py: 4, textAlign: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No income tags yet.
-                  </Typography>
-                </Box>
-              )}
-            </List>
+            <Box sx={{ py: 4, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                No income tags yet.
+              </Typography>
+            </Box>
           )}
         </Paper>
 
