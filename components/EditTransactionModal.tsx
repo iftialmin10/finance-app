@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -41,7 +41,7 @@ export function EditTransactionModal({
   onClose,
   onSuccess,
 }: EditTransactionModalProps) {
-  const { getTagsByType } = useTag()
+  const { tags } = useTag()
   const api = useApi()
 
   // Form state
@@ -59,8 +59,13 @@ export function EditTransactionModal({
   }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const getTagsForType = useCallback(
+    (targetType: TransactionType) => tags.filter((tag) => tag.type === targetType),
+    [tags]
+  )
+
   // Get available tags filtered by type
-  const availableTags = getTagsByType(type)
+  const availableTags = useMemo(() => getTagsForType(type), [getTagsForType, type])
 
   // Load transaction data when modal opens
   useEffect(() => {
@@ -70,27 +75,15 @@ export function EditTransactionModal({
       setAmount(transaction.amountMinor)
       setCurrency(transaction.currency)
       setDescription(transaction.note || '')
-      
-      // Map tag names to tag IDs
-      const tagIds = availableTags
+
+      const tagIds = getTagsForType(transaction.type)
         .filter((tag) => transaction.tags.includes(tag.name))
         .map((tag) => tag.id)
       setSelectedTags(tagIds)
-      
+
       setErrors({})
     }
-  }, [transaction, open, availableTags])
-
-  // Update selected tags when type changes
-  useEffect(() => {
-    if (transaction) {
-      // Re-map tag names to tag IDs for the new type
-      const tagIds = availableTags
-        .filter((tag) => transaction.tags.includes(tag.name))
-        .map((tag) => tag.id)
-      setSelectedTags(tagIds)
-    }
-  }, [type, availableTags, transaction])
+  }, [transaction, open, getTagsForType])
 
   const handleTypeChange = (
     _event: React.MouseEvent<HTMLElement>,
@@ -98,6 +91,8 @@ export function EditTransactionModal({
   ) => {
     if (newType !== null) {
       setType(newType)
+      const validTags = new Set(getTagsForType(newType).map((tag) => tag.id))
+      setSelectedTags((prev) => prev.filter((id) => validTags.has(id)))
       setErrors({})
     }
   }

@@ -541,41 +541,7 @@ export default function TransactionsPage() {
                   sx={{ mb: 2 }}
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: { xs: 'flex-start', sm: 'center' },
-                        width: '100%',
-                        pr: { xs: 0, sm: 2 },
-                        columnGap: { xs: 2, sm: 4 },
-                        rowGap: { xs: 1, sm: 0 },
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <Typography variant="h6" sx={{ flexShrink: 0 }}>
-                        {group.monthLabel}
-                      </Typography>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          gap: { xs: 1.5, sm: 3 },
-                          flexWrap: 'wrap',
-                          justifyContent: { xs: 'flex-start', sm: 'flex-end' },
-                          flexGrow: 1,
-                        }}
-                      >
-                        <Typography variant="body2" color="success.main">
-                          Income: {formatAmount(group.summary.income, group.summary.currency)}
-                        </Typography>
-                        <Typography variant="body2" color="error.main">
-                          Expense: {formatAmount(group.summary.expense, group.summary.currency)}
-                        </Typography>
-                        <Typography variant="body2" fontWeight="bold" color={group.summary.balance >= 0 ? 'success.main' : 'error.main'}>
-                          Balance: {formatAmount(group.summary.balance, group.summary.currency)}
-                        </Typography>
-                      </Box>
-                    </Box>
+                    <Typography variant="h6">{group.monthLabel}</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
                     <TableContainer>
