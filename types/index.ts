@@ -119,6 +119,8 @@ export interface TransactionQueryParams {
   from?: string // YYYY-MM-DD format
   to?: string // YYYY-MM-DD format
   type?: TransactionType
+  currency?: string
+  tag?: string
   limit?: number
   offset?: number
 }
@@ -131,6 +133,7 @@ export interface StatisticsQueryParams {
   from: string // YYYY-MM-DD format
   to: string // YYYY-MM-DD format
   currency: string
+  includeConverted?: boolean
 }
 
 /**
@@ -270,6 +273,9 @@ export interface StatisticsData {
     to: string
     currency: string
   }
+  meta?: {
+    skippedCurrencies?: string[]
+  }
 }
 
 /**
@@ -284,6 +290,33 @@ export interface UserData {
  */
 export interface PreviewResponse {
   affectedCount: number
+}
+
+/**
+ * Setup catalog summary structures
+ */
+export interface SetupCatalogProfile {
+  name: string
+  count: number
+}
+
+export interface SetupCatalogCurrency {
+  code: string
+  count: number
+}
+
+export interface SetupCatalogTag {
+  profile: string
+  name: string
+  type: TransactionType
+  count: number
+}
+
+export interface SetupCatalogData {
+  transactionCount: number
+  profiles: SetupCatalogProfile[]
+  currencies: SetupCatalogCurrency[]
+  tags: SetupCatalogTag[]
 }
 
 // ============================================================================

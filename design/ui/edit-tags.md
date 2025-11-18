@@ -140,19 +140,18 @@ EditTags
    - **Manual Edit**: Add/Delete/Modify/Change Color → 
      - Validate → Save to IndexedDB → 
      - Success Message
-   - **Rename Tag**: Edit tag name → 
-     - Validate → Call `GET /api/tags/rename/preview` to get affected count → 
-     - Show confirmation dialog with count → 
-     - User confirms → Call `POST /api/tags/rename` to update all transactions in database → 
-     - Update tag in IndexedDB → 
-     - Show success message with transaction count (e.g., "Tag renamed successfully. 15 transactions updated.")
-   - **Delete Tag**: Click delete → 
-     - Call `GET /api/tags/delete/preview` to check if tag is used → 
-     - If tag is used, show error and block deletion → 
-     - If not used, show confirmation dialog → 
-     - User confirms → Call `DELETE /api/tags` to validate deletion → 
-     - Remove tag from IndexedDB → 
-     - Show success message (e.g., "Tag deleted successfully.")
+  - **Rename Tag**: Edit tag name → 
+    - Validate → Query `/api/transactions?profile=<active>&tag=<oldName>&limit=1` to get affected count → 
+    - Show confirmation dialog with count → 
+    - User confirms → Stream `/api/transactions?profile=<active>&tag=<oldName>` and call `PUT /api/transactions/:id` with the updated tags array → 
+    - Update tag in IndexedDB → 
+    - Show success message with transaction count (e.g., "Tag renamed successfully. 15 transactions updated.")
+  - **Delete Tag**: Click delete → 
+    - Query `/api/transactions?profile=<active>&tag=<name>&limit=1` to check if tag is used → 
+    - If tag is used, show error and block deletion → 
+    - If not used, show confirmation dialog → 
+    - User confirms → Remove tag from IndexedDB → 
+    - Show success message (e.g., "Tag deleted successfully.")
 
 **Note:** Tags are filtered by active profile and transaction type (expense/income). Import from Database option allows users to quickly populate tags from existing transactions. When renaming a tag, all transactions in the database that use the old tag name are updated to use the new name.
 
@@ -178,10 +177,7 @@ EditTags
 <a id="api-tag-management"></a>
 
 ### Tag Management
-- `GET /api/tags/rename/preview` — Preview how many transactions will be affected by renaming a tag. See [Tag Rename Preview API](./api/tags-rename-preview.md)
-- `POST /api/tags/rename` — Rename a tag and update all transactions in the database. See [Tag Rename API](./api/tags-rename.md)
-- `GET /api/tags/delete/preview` — Preview how many transactions will be affected by deleting a tag. See [Tag Delete Preview API](./api/tags-delete-preview.md)
-- `DELETE /api/tags` — Delete a tag. Deletion is only allowed if no transactions contain the tag. See [Tag Delete API](./api/tags-delete.md)
+- Tag operations no longer have dedicated `/api/tags/*` routes. The UI now scans `/api/transactions` for the active profile to determine usage counts and uses `PUT /api/transactions/:id` to update tag arrays when renaming.
 - `GET /api/transactions` — Used for importing tags from database. See [API Response Documentation](./api/transactions-list.md)
 
 **Note:** Tag operations (add, edit color) are performed client-side using IndexedDB. However, when renaming or deleting a tag, the system first calls a preview API to check how many transactions will be affected. For deletion, if any transactions use the tag, deletion is blocked. For renaming, after user confirmation, the system calls the actual operation API to update all transactions in the database.

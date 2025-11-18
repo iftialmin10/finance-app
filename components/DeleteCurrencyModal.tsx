@@ -43,11 +43,17 @@ export function DeleteCurrencyModal({
       const loadPreview = async () => {
         try {
           setIsLoadingPreview(true)
-          const response = await api.getTransactions({})
+          const response = await api.getTransactions({
+            currency: code.toUpperCase(),
+            limit: 1,
+            offset: 0,
+          })
           if (response.success && response.data) {
-            const transactions = response.data.transactions || []
-            const count = transactions.filter((t) => t.currency === code).length
-            setAffectedCount(count)
+            setAffectedCount(
+              response.data.pagination?.total ??
+                response.data.transactions?.length ??
+                0
+            )
           } else {
             setAffectedCount(0)
           }

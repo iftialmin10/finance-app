@@ -13,10 +13,16 @@ import type {
   UpdateTransactionRequest,
   TransactionQueryParams,
   StatisticsQueryParams,
+  TransactionType,
+  SetupCatalogData,
 } from '@/types'
+import { summarizeCatalog } from '@/lib/catalog-summary'
 import { getFriendlyErrorMessage, isNetworkError } from '@/utils/error'
 
 const GUEST_ROUTE_DELAY_MS = 2000
+const FORCE_GUEST_MODE =
+  typeof process !== 'undefined' &&
+  process.env.NEXT_PUBLIC_FORCE_GUEST_MODE === 'true'
 
 /**
  * Simulate backend latency for guest routes
@@ -31,6 +37,7 @@ async function simulateGuestRouteDelay(
  * Check if guest mode is active
  */
 async function isGuestMode(): Promise<boolean> {
+  if (FORCE_GUEST_MODE) return true
   if (typeof window === 'undefined') return false
   return await getGuestModeState()
 }
@@ -81,6 +88,41 @@ async function handleGuestModeRequest(
   const path = url.pathname
   const searchParams = Object.fromEntries(url.searchParams)
   const body = parseBody(options?.body)
+
+  // ============================================================================
+  // Setup Endpoints
+  // ============================================================================
+
+  if (path === '/api/setup/catalog' && method === 'GET') {
+    const limit = 500
+    let offset = 0
+    let hasMore = true
+    const transactions: TransactionsListData['transactions'] = []
+
+    while (hasMore) {
+      const batch = await guestDataService.getTransactions({ limit, offset })
+      transactions.push(...(batch.transactions || []))
+      hasMore = Boolean(batch.pagination?.hasMore)
+      offset += limit
+      if (!hasMore) {
+        break
+      }
+    }
+
+    const catalog = summarizeCatalog(
+      transactions.map((transaction) => ({
+        profile: transaction.profile,
+        currency: transaction.currency,
+        type: transaction.type,
+        tags: transaction.tags,
+      }))
+    )
+
+    return {
+      success: true,
+      data: { catalog },
+    }
+  }
 
   // ============================================================================
   // Transaction Endpoints
@@ -254,97 +296,6 @@ async function handleGuestModeRequest(
   }
 
   // ============================================================================
-  // Profile Endpoints
-  // ============================================================================
-
-  // GET /api/profiles/rename/preview
-  if (path === '/api/profiles/rename/preview' && method === 'GET') {
-    const profile = searchParams.profile || ''
-    const result = await guestDataService.previewRename('profile', profile)
-    return {
-      success: true,
-      data: result,
-    }
-  }
-
-  // POST /api/profiles/rename
-  if (path === '/api/profiles/rename' && method === 'POST') {
-    // In guest mode, profile rename is handled client-side (IndexedDB)
-    // This is just for API compatibility
-    return {
-      success: true,
-      message: 'Profile renamed successfully',
-      data: { affectedCount: 0 },
-    }
-  }
-
-  // GET /api/profiles/delete/preview
-  if (path === '/api/profiles/delete/preview' && method === 'GET') {
-    const profile = searchParams.profile || ''
-    const result = await guestDataService.previewDelete('profile', profile)
-    return {
-      success: true,
-      data: result,
-    }
-  }
-
-  // POST /api/profiles/import
-  if (path === '/api/profiles/import' && method === 'POST') {
-    // In guest mode, profile import is handled client-side
-    return {
-      success: true,
-      message: 'Profiles imported successfully',
-    }
-  }
-
-  // ============================================================================
-  // Tag Endpoints
-  // ============================================================================
-
-  // GET /api/tags/rename/preview
-  if (path === '/api/tags/rename/preview' && method === 'GET') {
-    const tag = searchParams.tag || ''
-    const profile = searchParams.profile || ''
-    const result = await guestDataService.previewRename('tag', tag, profile)
-    return {
-      success: true,
-      data: result,
-    }
-  }
-
-  // POST /api/tags/rename
-  if (path === '/api/tags/rename' && method === 'POST') {
-    // In guest mode, tag rename is handled client-side (IndexedDB)
-    // This is just for API compatibility
-    return {
-      success: true,
-      message: 'Tag renamed successfully',
-      data: { affectedCount: 0 },
-    }
-  }
-
-  // GET /api/tags/delete/preview
-  if (path === '/api/tags/delete/preview' && method === 'GET') {
-    const tag = searchParams.tag || ''
-    const profile = searchParams.profile || ''
-    const result = await guestDataService.previewDelete('tag', tag, profile)
-    return {
-      success: true,
-      data: result,
-    }
-  }
-
-  // DELETE /api/tags
-  if (path === '/api/tags' && method === 'DELETE') {
-    // In guest mode, tag delete is handled client-side (IndexedDB)
-    // This is just for API compatibility
-    return {
-      success: true,
-      message: 'Tag deleted successfully',
-    }
-  }
-
-  // ============================================================================
   // Backup & Restore Endpoints
   // ============================================================================
 
@@ -366,6 +317,18 @@ async function handleGuestModeRequest(
     return {
       success: true,
       message: 'Data restored successfully',
+    }
+  }
+
+  // ============================================================================
+  // Account Endpoints
+  // ============================================================================
+
+  if (path === '/api/account' && method === 'DELETE') {
+    guestDataService.reset()
+    return {
+      success: true,
+      message: 'Account deleted successfully',
     }
   }
 
@@ -533,7 +496,7 @@ export async function getStatistics(
 ): Promise<ApiResponse<StatisticsData>> {
   const queryString = new URLSearchParams(
     Object.entries(params).reduce((acc, [key, value]) => {
-      if (value) {
+      if (value !== undefined && value !== null) {
         acc[key] = String(value)
       }
       return acc
@@ -563,6 +526,14 @@ export async function logout(): Promise<ApiResponse<{ message: string }>> {
   })
 }
 
+export async function deleteAccount(): Promise<
+  ApiResponse<{ message: string }>
+> {
+  return apiCall<{ message: string }>('/api/account', {
+    method: 'DELETE',
+  })
+}
+
 export async function signupRequest(
   email: string
 ): Promise<ApiResponse<{ message: string }>> {
@@ -582,11 +553,12 @@ export async function verifyEmail(
 }
 
 export async function setPassword(
+  token: string,
   password: string
 ): Promise<ApiResponse<{ message: string }>> {
   return apiCall<{ message: string }>('/api/auth/set-password', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ token, password }),
   })
 }
 
@@ -622,85 +594,12 @@ export async function resetPassword(
 }
 
 // ============================================================================
-// Profile API Calls
+// Setup API Calls
 // ============================================================================
 
-export async function previewProfileRename(
-  profile: string
-): Promise<ApiResponse<PreviewResponse>> {
-  const queryString = new URLSearchParams({ profile }).toString()
-  return apiCall<PreviewResponse>(`/api/profiles/rename/preview?${queryString}`)
-}
-
-export async function renameProfile(
-  oldName: string,
-  newName: string
-): Promise<ApiResponse<{ message: string; data: PreviewResponse }>> {
-  return apiCall<{ message: string; data: PreviewResponse }>(
-    '/api/profiles/rename',
-    {
-      method: 'POST',
-      body: JSON.stringify({ oldName, newName }),
-    }
-  )
-}
-
-export async function previewProfileDelete(
-  profile: string
-): Promise<ApiResponse<PreviewResponse>> {
-  const queryString = new URLSearchParams({ profile }).toString()
-  return apiCall<PreviewResponse>(`/api/profiles/delete/preview?${queryString}`)
-}
-
-export async function importProfiles(): Promise<
-  ApiResponse<{ message: string }>
+export async function getSetupCatalog(): Promise<
+  ApiResponse<{ catalog: SetupCatalogData }>
 > {
-  return apiCall<{ message: string }>('/api/profiles/import', {
-    method: 'POST',
-  })
-}
-
-// ============================================================================
-// Tag API Calls
-// ============================================================================
-
-export async function previewTagRename(
-  tag: string,
-  profile: string
-): Promise<ApiResponse<PreviewResponse>> {
-  const queryString = new URLSearchParams({ tag, profile }).toString()
-  return apiCall<PreviewResponse>(`/api/tags/rename/preview?${queryString}`)
-}
-
-export async function renameTag(
-  oldName: string,
-  newName: string,
-  profile: string
-): Promise<ApiResponse<{ message: string; data: PreviewResponse }>> {
-  return apiCall<{ message: string; data: PreviewResponse }>(
-    '/api/tags/rename',
-    {
-      method: 'POST',
-      body: JSON.stringify({ oldName, newName, profile }),
-    }
-  )
-}
-
-export async function previewTagDelete(
-  tag: string,
-  profile: string
-): Promise<ApiResponse<PreviewResponse>> {
-  const queryString = new URLSearchParams({ tag, profile }).toString()
-  return apiCall<PreviewResponse>(`/api/tags/delete/preview?${queryString}`)
-}
-
-export async function deleteTag(
-  tag: string,
-  profile: string
-): Promise<ApiResponse<{ message: string }>> {
-  return apiCall<{ message: string }>('/api/tags', {
-    method: 'DELETE',
-    body: JSON.stringify({ tag, profile }),
-  })
+  return apiCall<{ catalog: SetupCatalogData }>('/api/setup/catalog')
 }
 

@@ -6,7 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed",
+    "db:reset": "cross-env NODE_ENV=test tsx tests/db-utils.ts reset",
+    "test:e2e": "cypress run",
+    "test:open": "cypress open",
+    "test:ui": "start-server-and-test \"cross-env PORT=3000 npm run dev\" http-get://localhost:3000/api/health \"npm run test:e2e -- --spec $npm_config_spec\""
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -15,12 +22,16 @@
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
     "@mui/x-date-pickers": "^8.17.0",
+    "@prisma/client": "^6.19.0",
+    "bcryptjs": "^2.4.3",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
     "next": "^14.2.5",
+    "nodemailer": "^7.0.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^3.3.0",
-    "react-transition-group": "^4.4.5"
+    "react-transition-group": "^4.4.5",
+    "recharts": "^3.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
@@ -28,8 +39,17 @@
     "@types/react-dom": "^18.3.0",
     "@types/react-transition-group": "^4.4.12",
     "@types/redux": "^3.6.31",
+    "cross-env": "^7.0.3",
+    "cypress": "^13.14.2",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
+    "prisma": "^6.19.0",
+    "start-server-and-test": "^2.0.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.5.3"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

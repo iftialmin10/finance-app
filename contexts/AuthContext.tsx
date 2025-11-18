@@ -1,6 +1,14 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useRef,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import type { User } from '@/types'
 import {
@@ -17,6 +25,8 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   isGuestMode: boolean
+  isBackendAvailable: boolean
+  refreshBackendStatus: () => Promise<boolean>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   enterGuestMode: () => Promise<void>
@@ -31,6 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isGuestMode, setIsGuestMode] = useState(false)
+  const [isBackendAvailable, setIsBackendAvailable] = useState(false)
+  const hasCheckedInitialAuth = useRef(false)
+
+  const FORCE_GUEST_MODE =
+    process.env.NEXT_PUBLIC_FORCE_GUEST_MODE === 'true'
 
   const clearBrowserStorage = async () => {
     if (typeof window === 'undefined') {
@@ -50,14 +65,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const checkBackendAvailability = useCallback(async () => {
+    if (FORCE_GUEST_MODE) {
+      setIsBackendAvailable(false)
+      return false
+    }
+    try {
+      const response = await fetch('/api/health', { cache: 'no-store' })
+      if (!response.ok) {
+        setIsBackendAvailable(false)
+        return false
+      }
+      const data = await response.json().catch(() => null)
+      const healthy = Boolean(data?.ok)
+      setIsBackendAvailable(healthy)
+      return healthy
+    } catch (error) {
+      setIsBackendAvailable(false)
+      return false
+    }
+  }, [FORCE_GUEST_MODE])
+
+  const refreshBackendStatus = useCallback(async () => {
+    return checkBackendAvailability()
+  }, [checkBackendAvailability])
+
   useEffect(() => {
+    if (hasCheckedInitialAuth.current) {
+      return
+    }
+    hasCheckedInitialAuth.current = true
+
     // Check authentication state on mount
     const checkAuth = async () => {
       try {
-        const guestMode = await getGuestModeState()
-        setIsGuestMode(guestMode)
+        const backendAvailable = await checkBackendAvailability()
+        let guestPreference = await getGuestModeState()
 
-        if (guestMode) {
+        if (FORCE_GUEST_MODE) {
+          guestPreference = true
+          await setGuestModeState(true)
+        }
+
+        setIsGuestMode(guestPreference)
+
+        if (guestPreference) {
           // In guest mode, set mock user
           const userData = await guestDataService.getCurrentUser()
           setUser({
@@ -68,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             createdAt: userData.user.createdAt,
             updatedAt: userData.user.updatedAt,
           })
-        } else {
+        } else if (backendAvailable) {
           // Check for existing session
           // Silently handle 404s (backend not available yet)
           try {
@@ -87,12 +139,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Silently ignore 404s or network errors when backend is not available
             // This is expected when building UI with mock data
             const errorMessage = sessionError?.message || ''
-            const is404 = errorMessage.includes('404') || 
-                         errorMessage.includes('not found') ||
-                         errorMessage.includes('Endpoint not found')
-            const isNetworkError = errorMessage.includes('Failed to fetch') ||
-                                  errorMessage.includes('NetworkError')
-            
+            const is404 =
+              errorMessage.includes('404') ||
+              errorMessage.includes('not found') ||
+              errorMessage.includes('Endpoint not found')
+            const isNetworkError =
+              errorMessage.includes('Failed to fetch') ||
+              errorMessage.includes('NetworkError')
+
             if (is404 || isNetworkError) {
               // Backend not available - this is expected in development
               // No need to log or handle
@@ -100,6 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               console.error('Error checking session:', sessionError)
             }
           }
+        } else {
+          setUser(null)
         }
       } catch (error) {
         // Only log unexpected errors
@@ -113,10 +169,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     checkAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [FORCE_GUEST_MODE, api, checkBackendAvailability])
 
   const signIn = async (email: string, password: string) => {
     try {
+      if (FORCE_GUEST_MODE) {
+        throw new Error(
+          'Guest Mode is enforced. Disable NEXT_PUBLIC_FORCE_GUEST_MODE to sign in.'
+        )
+      }
+
+      const backendHealthy =
+        isBackendAvailable || (await checkBackendAvailability())
+      if (!backendHealthy) {
+        throw new Error(
+          'Server is currently unavailable. Please try again later or use Guest Mode.'
+        )
+      }
+
       // Preserve current guest mode state to decide post-login behavior
       const wasGuestMode = isGuestMode
       
@@ -228,6 +298,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const exitGuestMode = async () => {
     try {
+      const backendHealthy =
+        isBackendAvailable || (await checkBackendAvailability())
+      if (!backendHealthy) {
+        throw new Error(
+          'Cannot exit Guest Mode while the server is offline. Please try again later.'
+        )
+      }
+
       // Clear guest mode flag
       await clearGuestModeState()
       
@@ -257,6 +335,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isGuestMode,
+        isBackendAvailable,
+        refreshBackendStatus,
         signIn,
         signOut,
         enterGuestMode,

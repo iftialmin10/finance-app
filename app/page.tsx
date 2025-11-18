@@ -22,6 +22,7 @@ import {
   People as PeopleIcon,
   Backup as BackupIcon,
   Logout as LogoutIcon,
+  DeleteForever as DeleteForeverIcon,
 } from '@mui/icons-material'
 import { PageLayout } from '@/components/PageLayout'
 import { ProfileSelector } from '@/components/ProfileSelector'
@@ -35,6 +36,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns'
 import type { StatisticsData } from '@/types'
 import { AnimatedSection } from '@/components/AnimatedSection'
 import { LoadingButton } from '@/components/LoadingButton'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -46,12 +48,10 @@ export default function DashboardPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
 
-  // EARLY RETURN: If not authenticated (no real user), don't render anything (StartupRedirect will handle redirect)
-  if (!authLoading && !user) {
-    return null
-  }
-  
   // Allow guest mode to render (API is intercepted)
 
   const loadStatistics = useCallback(async () => {
@@ -171,6 +171,39 @@ export default function DashboardPage() {
       setIsSigningOut(false)
     }
   }, [signOut])
+
+  const handleOpenDeleteDialog = useCallback(() => {
+    setDeleteAccountError(null)
+    setIsDeleteDialogOpen(true)
+  }, [])
+
+  const handleCloseDeleteDialog = useCallback(() => {
+    if (isDeletingAccount) return
+    setIsDeleteDialogOpen(false)
+  }, [isDeletingAccount])
+
+  const handleConfirmDeleteAccount = useCallback(async () => {
+    if (isDeletingAccount) return
+
+    setIsDeletingAccount(true)
+    setDeleteAccountError(null)
+
+    try {
+      const response = await api.deleteAccount()
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete account.')
+      }
+
+      setIsDeleteDialogOpen(false)
+      await signOut()
+    } catch (error) {
+      setDeleteAccountError(
+        getFriendlyErrorMessage(error, 'Failed to delete account.')
+      )
+    } finally {
+      setIsDeletingAccount(false)
+    }
+  }, [api, signOut, isDeletingAccount])
 
   // Check authentication first - redirect to sign-in if not authenticated
   useEffect(() => {
@@ -422,7 +455,27 @@ export default function DashboardPage() {
         </AnimatedSection>
 
         <AnimatedSection delay={150}>
-          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              mt: 4,
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: 'center',
+              gap: 2,
+            }}
+          >
+            {!isGuestMode && (
+              <LoadingButton
+                variant="outlined"
+                color="warning"
+                startIcon={<DeleteForeverIcon />}
+                onClick={handleOpenDeleteDialog}
+                disabled={isDeletingAccount}
+                sx={{ minWidth: 220 }}
+              >
+                Delete Account
+              </LoadingButton>
+            )}
             <LoadingButton
               variant="contained"
               color="error"
@@ -434,8 +487,23 @@ export default function DashboardPage() {
               Sign Out
             </LoadingButton>
           </Box>
+          {deleteAccountError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteAccountError}
+            </Alert>
+          )}
         </AnimatedSection>
       </Box>
+
+      <ConfirmDialog
+        open={isDeleteDialogOpen}
+        title="Delete your account?"
+        message="This will permanently remove your account and all transactions. This action cannot be undone."
+        confirmText="Delete account"
+        confirmColor="error"
+        onConfirm={handleConfirmDeleteAccount}
+        onCancel={handleCloseDeleteDialog}
+      />
     </PageLayout>
   )
 }

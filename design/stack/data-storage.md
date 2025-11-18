@@ -5,10 +5,10 @@
 ## Storage Overview
 
 Application data is persisted using a hybrid storage approach:
-- **PostgreSQL (Neon)**: Core transaction data (users, transactions)
-- **IndexedDB**: Profile, tag, and currency data stored client-side in the browser
+- **PostgreSQL (Neon)**: Source of truth for authenticated users — stores only two tables (`users` and `transactions`). User rows contain authentication data; every profile/currency/tag reference lives directly on each transaction row (no additional tables or metadata blobs).
+- **IndexedDB**: Mirrors profile/tag/currency data only when Guest Mode is active (demo experience) and caches lightweight client preferences.
 
-Prisma is the standard ORM for all PostgreSQL data access. App-specific tables and relationships are documented in `design/file-operations.md` and `design/data-models.md` (now SQL-focused). Profile, tag, and currency storage is documented in `design/currency-system.md`.
+Prisma is the standard ORM for all PostgreSQL data access. The two-table schema plus JSON fields are documented in `design/ui/data-models.md`. Guest-mode IndexedDB schemas live in `design/currency-system.md`.
 
 ## PostgreSQL (Neon) with Prisma
 
@@ -30,7 +30,7 @@ npx prisma init
 Set `DATABASE_URL` in your `.env.local` (Neon connection string, with `sslmode=require`).
 
 ### Define schema
-See `design/data-models.md` for the SQL schema and the equivalent Prisma models.
+See `design/data-models.md` for the SQL schema and equivalent Prisma models (`prisma/schema.prisma`).
 
 ### Migrate & generate
 ```bash
@@ -39,6 +39,12 @@ npx prisma generate
 # Optional GUI
 npx prisma studio
 ```
+
+### Seed baseline data
+```bash
+npm run prisma:seed
+```
+Seeds demo users (with embedded profiles/currencies/tags JSON) plus sample transactions referenced throughout the UI/playbooks.
 
 ## IndexedDB (Browser Storage)
 
@@ -121,7 +127,7 @@ See `design/currency-system.md` for detailed profile, tag, and currency operatio
 
 Backups are performed by exporting the logged-in user's transaction data from PostgreSQL to a single CSV file that the user downloads. The backup includes only the user's transactions (with embedded tag names). The CSV file does NOT contain `id` or `user_id` columns.
 
-**Note:** Profiles, Tags, and Currencies are NOT included in backups as they are stored locally in IndexedDB. Users will need to re-add their profiles, tags, and currencies on new devices or browsers.
+**Note:** Backups currently include only transactions. Profile, tag, and currency information is inherently part of each transaction row (and mirrored in IndexedDB for Guest Mode), so exporting/importing the ledger automatically transfers these attributes.
 
 Restores are performed by uploading that CSV file, which the server validates and then uses to transactionally restore the user's transaction data. On restore, all existing transaction data for the logged-in user is deleted before restoring the backup data. New `id` values are generated and `user_id` is set from the session.
 

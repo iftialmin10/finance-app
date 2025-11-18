@@ -27,10 +27,9 @@ function VerifyPageContent() {
   const api = useApi()
   const [state, setState] = useState<VerificationState>('loading')
   const [errorMessage, setErrorMessage] = useState<string>('')
+  const token = searchParams.get('token') || ''
 
   useEffect(() => {
-    const token = searchParams.get('token')
-    
     if (!token) {
       setState('error')
       setErrorMessage('Verification token is missing. Please check your email link.')
@@ -45,7 +44,7 @@ function VerifyPageContent() {
           setState('success')
           // Auto-redirect to set password page after 2 seconds
           setTimeout(() => {
-            router.push('/auth/set-password')
+            router.push(`/auth/set-password?token=${encodeURIComponent(token)}`)
           }, 2000)
         } else {
           const errorMsg =
@@ -70,8 +69,7 @@ function VerifyPageContent() {
     }
 
     verify()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [token, api, router])
 
   const handleRequestNewLink = () => {
     router.push('/auth/signup')
@@ -138,7 +136,9 @@ function VerifyPageContent() {
               <Button
                 fullWidth
                 variant="contained"
-                onClick={() => router.push('/auth/set-password')}
+                onClick={() =>
+                  router.push(`/auth/set-password?token=${encodeURIComponent(token)}`)
+                }
                 size="large"
               >
                 Set Your Password

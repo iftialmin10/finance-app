@@ -4,7 +4,7 @@
 
 ## Guest Mode Flow
 
-1. User clicks "Guest Mode" or "Continue as Guest" button
+1. User clicks "Guest Mode" or "Continue as Guest" button (devs can simulate this automatically by setting `NEXT_PUBLIC_FORCE_GUEST_MODE=true` in `.env.local`)
 2. System activates Guest Mode (sets flag in IndexedDB)
 3. Initializes GuestDataService with fake data
 4. Redirects to Dashboard
@@ -46,7 +46,7 @@ The `GuestDataService` handles all mock data generation:
 - `getSettings()` — Returns generated fake user/app settings
 - `updateSettings(data)` — Simulates settings update
 
-**Note:** Profile, Tag, and Currency management is handled entirely on the frontend using IndexedDB. No profile, tag, or currency API endpoints are needed.
+**Note:** In Guest Mode, profile, tag, and currency management is handled entirely on the frontend using IndexedDB. The authenticated experience uses Prisma/PostgreSQL as the source of truth.
 
 ### Guest Mode Implementation Details
 
@@ -193,6 +193,9 @@ export async function clearGuestModeState(): Promise<void> {
 ```
 
 **Note:** The IndexedDB implementation should be integrated with your existing IndexedDB setup for profiles, tags, and currencies. All browser-side persistent data should be stored in IndexedDB, not localStorage.
+
+### Developer Shortcuts
+- Set `NEXT_PUBLIC_FORCE_GUEST_MODE=true` to auto-enable Guest Mode without clicking the button (useful for screenshots, demos, or when backend services are offline). Remember to switch it back to `false` before shipping builds.
 
 #### Guest Data Service (Client-Side)
 ```typescript

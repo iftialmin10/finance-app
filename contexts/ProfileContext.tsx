@@ -1,7 +1,14 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import type { Profile } from '@/types'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  ReactNode,
+} from 'react'
+import type { Profile, Transaction, TransactionQueryParams } from '@/types'
 import {
   getAllProfiles,
   getActiveProfile,
@@ -44,8 +51,61 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [activeProfile, setActiveProfile] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const activeLoadCountRef = useRef(0)
 
   const authStateKey = user ? `user:${user.id}` : isGuestMode ? 'guest' : 'signed-out'
+
+  const TRANSACTION_PAGE_SIZE = 200
+
+  const countTransactions = async (
+    params: TransactionQueryParams = {}
+  ): Promise<number> => {
+    const response = await api.getTransactions({
+      ...params,
+      limit: 1,
+      offset: 0,
+    })
+    if (!response.success || !response.data) {
+      throw new Error(
+        response.error?.message || 'Failed to count transactions.'
+      )
+    }
+    return (
+      response.data.pagination?.total ??
+      response.data.transactions?.length ??
+      0
+    )
+  }
+
+  const fetchTransactions = async (
+    params: TransactionQueryParams = {}
+  ): Promise<Transaction[]> => {
+    const results: Transaction[] = []
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const response = await api.getTransactions({
+        ...params,
+        limit: TRANSACTION_PAGE_SIZE,
+        offset,
+      })
+      if (!response.success || !response.data) {
+        throw new Error(
+          response.error?.message || 'Failed to load transactions.'
+        )
+      }
+      const batch = response.data.transactions ?? []
+      results.push(...batch)
+      hasMore = response.data.pagination?.hasMore ?? false
+      offset += TRANSACTION_PAGE_SIZE
+      if (!hasMore) {
+        break
+      }
+    }
+
+    return results
+  }
 
   useEffect(() => {
     if (authLoading) {
@@ -62,9 +122,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     const initialize = async () => {
       await loadProfiles({ showLoader: false })
-      if (!isGuestMode) {
-        await autoPopulateProfiles()
-      }
+      await autoPopulateProfiles()
     }
     initialize()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,19 +131,29 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const loadProfiles = async (options: { showLoader?: boolean } = {}) => {
     const { showLoader = true } = options
     try {
+      activeLoadCountRef.current += 1
       if (showLoader) {
         setIsLoading(true)
       }
       setError(null)
       const allProfiles = await getAllProfiles()
-      const active = await getActiveProfile()
+      let active = await getActiveProfile()
+      if (!active && allProfiles.length > 0) {
+        active = allProfiles[0].name
+        await setActiveProfileDB(active)
+      }
       setProfiles(allProfiles)
       setActiveProfile(active)
     } catch (error) {
       console.error('Error loading profiles:', error)
       setError(getFriendlyErrorMessage(error, 'Failed to load profiles.'))
     } finally {
-      setIsLoading(false)
+      activeLoadCountRef.current = Math.max(0, activeLoadCountRef.current - 1)
+      if (activeLoadCountRef.current === 0) {
+        setIsLoading(false)
+      } else if (showLoader) {
+        setIsLoading(true)
+      }
     }
   }
 
@@ -94,18 +162,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
    * Runs silently at startup
    */
   const autoPopulateProfiles = async () => {
-    if (isGuestMode) {
-      return
-    }
-
     try {
       const currentProfiles = await getAllProfiles()
-      // Only auto-populate if profiles are empty
       if (currentProfiles.length === 0) {
         await importProfilesFromTransactions()
       }
     } catch (error) {
-      // Silently fail - this is a convenience feature
       console.debug('Auto-populate profiles failed:', error)
     }
   }
@@ -118,15 +180,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     skipped: number
   }> => {
     try {
-      // Get all transactions
-      const response = await api.getTransactions({})
-      if (!response.success || !response.data) {
-        return { added: 0, skipped: 0 }
-      }
-
-      const transactions = response.data.transactions || []
-      
-      // Extract unique profile names
+      const transactions = await fetchTransactions()
       const uniqueProfiles = new Set<string>()
       for (const transaction of transactions) {
         if (transaction.profile) {
@@ -134,25 +188,24 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Get existing profiles
       const existingProfiles = await getAllProfiles()
       const existingNames = new Set(existingProfiles.map((p) => p.name))
 
       let added = 0
       let skipped = 0
 
-      // Add new profiles (skip existing)
       for (const profileName of uniqueProfiles) {
         if (!existingNames.has(profileName)) {
           try {
             await addProfileDB(profileName)
             added++
           } catch (error: any) {
-            // Handle ConstraintError if profile was added between check and add
-            if (error?.name === 'ConstraintError' || error?.message?.includes('already exists')) {
+            if (
+              error?.name === 'ConstraintError' ||
+              error?.message?.includes('already exists')
+            ) {
               skipped++
             } else {
-              // Re-throw other errors
               throw error
             }
           }
@@ -161,7 +214,6 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Set first profile as active if no active profile exists
       if (added > 0) {
         const currentActive = await getActiveProfile()
         if (!currentActive && uniqueProfiles.size > 0) {
@@ -171,8 +223,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Reload profiles
-      await loadProfiles()
+      await loadProfiles({ showLoader: false })
 
       return { added, skipped }
     } catch (error) {
@@ -189,27 +240,26 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
     const trimmedName = name.trim()
 
-    // Check for duplicates
     const existingProfiles = await getAllProfiles()
-    if (existingProfiles.some((p) => p.name === trimmedName)) {
+    if (
+      existingProfiles.some(
+        (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
+      )
+    ) {
       throw new Error('A profile with this name already exists')
     }
 
-    // Add to IndexedDB
     await addProfileDB(trimmedName)
 
-    // If this is the first profile, set it as active
     if (profiles.length === 0 && !activeProfile) {
       await setActiveProfileDB(trimmedName)
       setActiveProfile(trimmedName)
     }
 
-    // Reload profiles
-      await loadProfiles({ showLoader: false })
+    await loadProfiles({ showLoader: false })
   }
 
   const renameProfile = async (oldName: string, newName: string) => {
-    // Validate
     if (!newName || newName.trim() === '') {
       throw new Error('Profile name cannot be empty')
     }
@@ -220,47 +270,35 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       throw new Error('New name must be different from current name')
     }
 
-    // Check for duplicates
     const existingProfiles = await getAllProfiles()
-    if (existingProfiles.some((p) => p.name === trimmedNewName)) {
+    if (
+      existingProfiles.some(
+        (p) => p.name.toLowerCase() === trimmedNewName.toLowerCase()
+      )
+    ) {
       throw new Error('A profile with this name already exists')
     }
 
-    // Preview rename to get affected count
-    const previewResponse = await api.previewProfileRename(oldName)
-    if (!previewResponse.success) {
-      throw new Error(
-        previewResponse.error?.message || 'Failed to preview profile rename'
-      )
-    }
-
-    const affectedCount = previewResponse.data?.affectedCount || 0
-
-    // If there are affected transactions, update them via API
-    if (affectedCount > 0) {
-      const renameResponse = await api.renameProfile(oldName, trimmedNewName)
-      if (!renameResponse.success) {
-        throw new Error(
-          renameResponse.error?.message || 'Failed to rename profile'
-        )
+    const transactions = await fetchTransactions({ profile: oldName })
+    if (transactions.length > 0) {
+      for (const transaction of transactions) {
+        await api.updateTransaction(transaction.id, {
+          profile: trimmedNewName,
+        })
       }
     }
 
-    // Update in IndexedDB
-    // Since IndexedDB uses name as key, we need to delete and recreate
     const profile = existingProfiles.find((p) => p.name === oldName)
     if (profile) {
       await deleteProfileDB(oldName)
       await addProfileDB(trimmedNewName)
     }
 
-    // Update active profile if it was renamed
     if (activeProfile === oldName) {
       await setActiveProfileDB(trimmedNewName)
       setActiveProfile(trimmedNewName)
     }
 
-    // Reload profiles
     await loadProfiles({ showLoader: false })
   }
 
@@ -270,36 +308,21 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       throw new Error('Cannot delete the active profile. Please switch to another profile first.')
     }
 
-    let affectedCount = options?.affectedCount ?? null
+    const inferredCount =
+      options?.affectedCount ?? (await countTransactions({ profile: name }))
 
-    if (affectedCount === null || affectedCount === undefined) {
-      // Preview delete to check if profile is used
-      const previewResponse = await api.previewProfileDelete(name)
-      if (!previewResponse.success) {
-        throw new Error(
-          previewResponse.error?.message || 'Failed to preview profile delete'
-        )
-      }
-
-      affectedCount = previewResponse.data?.affectedCount ?? 0
-    }
-
-    // If profile is used in transactions, block deletion
-    if ((affectedCount ?? 0) > 0) {
+    if (inferredCount > 0) {
       throw new Error(
-        `Cannot delete profile: it is used in ${affectedCount} transaction(s). Please delete or reassign all transactions before deleting the profile.`
+        `Cannot delete profile: it is used in ${inferredCount} transaction(s). Please delete or reassign all transactions before deleting the profile.`
       )
     }
 
-    // Delete from IndexedDB
     await deleteProfileDB(name)
 
-    // Reload profiles
     await loadProfiles({ showLoader: false })
   }
 
   const switchProfile = async (name: string) => {
-    // Validate profile exists
     const existingProfiles = await getAllProfiles()
     if (!existingProfiles.some((p) => p.name === name)) {
       throw new Error(`Profile "${name}" not found`)

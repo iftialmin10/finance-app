@@ -1,0 +1,44 @@
+import { prisma } from '@/lib/prisma'
+import {
+  clearSessionCookie,
+  getSessionToken,
+} from '@/app/api/auth/_lib/helpers'
+import {
+  errorResponse,
+  successMessage,
+} from '@/app/api/auth/_lib/responses'
+
+export async function DELETE() {
+  try {
+    const token = getSessionToken()
+
+    if (!token) {
+      return errorResponse('Not authenticated.', 401)
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { sessionToken: token },
+    })
+
+    if (!user) {
+      clearSessionCookie()
+      return errorResponse('Session expired.', 401)
+    }
+
+    await prisma.user.delete({
+      where: { id: user.id },
+    })
+
+    clearSessionCookie()
+
+    return successMessage('Account deleted successfully.')
+  } catch (error) {
+    console.error('delete account error', error)
+    return errorResponse(
+      'Unable to delete account. Please try again later.',
+      500
+    )
+  }
+}
+
+

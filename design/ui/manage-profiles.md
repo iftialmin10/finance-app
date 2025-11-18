@@ -90,10 +90,7 @@
 <a id="api-profile-management"></a>
 
 ### Profile Management
-- `GET /api/profiles/rename/preview` — Preview how many transactions will be affected by renaming a profile. See [Profile Rename Preview API](./api/profiles-rename-preview.md)
-- `POST /api/profiles/rename` — Rename a profile and update all transactions in the database. See [Profile Rename API](./api/profiles-rename.md)
-- `GET /api/profiles/delete/preview` — Preview how many transactions reference a profile. See [Profile Delete Preview API](./api/profiles-delete-preview.md)
-- `GET /api/transactions` — Used for importing profiles from database. See [API Response Documentation](./api/transactions-list.md) and [Profiles Import API](./api/profiles-import.md)
+- Profile operations now derive everything from `/api/transactions`. The front-end scans transactions to count references, and uses `PUT /api/transactions/:id` to update rows when renaming profiles. There are no dedicated `/api/profiles/*` endpoints after the metadata removal work.
 
 **Note:** Profile management operations (create, switch, delete) are performed client-side using IndexedDB. Renaming a profile still requires an API call to update transactions in the database, but deletion now relies solely on the preview API—if the preview shows zero affected transactions, the profile is removed locally with no further backend calls. The transactions API is also used for the "Import from Database" feature to extract profile names from existing transactions.
 
@@ -179,9 +176,9 @@ ManageProfiles
    - **Switch Profile**: Select Profile → Update active selection in IndexedDB settings → Reload Dashboard with new profile filter
    - **Create Profile**: Enter Profile Name → Save to IndexedDB → 
      - No backend initialization needed (tags and transactions will be created with profile name when first used)
-   - **Rename Profile**: Select Profile → [Open Rename Modal](#rename-profile-modal) → Enter New Name → Call `GET /api/profiles/rename/preview` to get affected count → Show confirmation dialog with count → User confirms → Call `POST /api/profiles/rename` to update all transactions in database → Update profile name in IndexedDB → 
-     - All transactions in PostgreSQL with old profile name are updated to use the new name
-   - **Delete Profile**: Select Profile (non-active) → Call `GET /api/profiles/delete/preview` to check if profile is used → [Open Delete Modal](#delete-profile-modal) with count → If profile is used, show error and block deletion → If not used, Confirm → Remove from IndexedDB →
+   - **Rename Profile**: Select Profile → [Open Rename Modal](#rename-profile-modal) → Enter New Name → Query `/api/transactions?profile=<oldName>&limit=1` to show affected count → When confirmed, stream `/api/transactions?profile=<oldName>` and call `PUT /api/transactions/:id` with the new profile name for each row → Update the profile record in IndexedDB.
+     - All transactions in PostgreSQL with old profile name are updated via the existing transactions endpoint.
+   - **Delete Profile**: Select Profile (non-active) → Query `/api/transactions?profile=<name>&limit=1` to confirm zero usage → [Open Delete Modal](#delete-profile-modal) with count → If profile is used, show error and block deletion → If not used, Confirm → Remove from IndexedDB.
      - Deletion is only allowed if no transactions contain the profile
 4. Success Message
 

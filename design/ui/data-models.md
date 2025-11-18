@@ -97,7 +97,7 @@ export interface Transaction {
 ```
 
 **Note:** 
-- Profile, Tag, and Currency interfaces are defined below as they're stored in IndexedDB, not PostgreSQL.
+- Profile, Tag, and Currency interfaces are defined below as the guest-mode IndexedDB mirror. In authenticated mode, these entities are captured directly on each transaction row (there is no separate backing table or metadata blob).
 
 ### IndexedDB Interfaces
 
@@ -131,13 +131,20 @@ datasource db {
 }
 
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  passwordHash     String
-  emailVerifiedAt  DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @default(now())
-  transactions     Transaction[]
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  passwordHash       String
+  passwordSalt       String?
+  emailVerifiedAt    DateTime?
+  profiles           Json?
+  currencies         Json?
+  tags               Json?
+  settings           Json?
+  verificationTokens Json?
+  auditTrail         Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  transactions       Transaction[]
 
   @@map("users")
 }
@@ -153,7 +160,7 @@ model Transaction {
   tags        String[]
   note        String?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("transactions")
@@ -165,13 +172,13 @@ enum TransactionType {
 }
 ```
 
-**Note:** Profile, Tag, and Currency models are not needed in Prisma as they are stored in IndexedDB on the frontend. See [currency-system.md](currency-system.md) for the IndexedDB schemas.
+**Note:** Only two tables live in Postgres/Prisma (`users` and `transactions`). Profiles, currencies, and tags live exclusively on the `transactions` rows (one row per ledger entry). Guest mode still mirrors simplified versions of these structures in IndexedDB for the demo experience—see [currency-system.md](currency-system.md) for those browser schemas.
 
 ## Data Persistence Overview
 
-All application data is stored in PostgreSQL (managed on Neon). The system uses normalized tables and transactional CRUD operations. No profile photo storage.
+All authenticated data is stored in PostgreSQL (managed on Neon) using just two tables. The `users` table owns every per-user concern (authentication credentials plus JSON fields for profiles/currencies/tags/settings/audit info), while the `transactions` table stores immutable ledger entries that reference the user and the profile name they belong to. No profile photo storage.
 
-**Note:** Profiles, Tags, and Currencies are stored in IndexedDB on the frontend and are NOT included in PostgreSQL or backups.
+**Note:** Profiles, Tags, and Currencies are persisted inside the `users` table as JSON for authenticated users (via Prisma) and mirrored in IndexedDB only when Guest Mode is active.
 
 ## Example Operations (Prisma)
 
@@ -216,7 +223,7 @@ async function listTransactions(userId: string, profile: string, limit = 50, off
 }
 ```
 
-**Note:** Tag management is now handled entirely in IndexedDB on the client side. No backend operations needed.
+**Note:** Tag management uses Prisma-backed APIs that rewrite the `tags` arrays on each affected transaction in normal mode and IndexedDB only when Guest Mode is active.
 
 ## Security & Integrity
 

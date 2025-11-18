@@ -12,13 +12,19 @@ import {
   Paper,
 } from '@mui/material'
 import { CheckCircle as CheckCircleIcon } from '@mui/icons-material'
+import { useAuth } from '@/contexts/AuthContext'
 import { useApi } from '@/utils/useApi'
 import { Snackbar } from '@/components/Snackbar'
 import { LoadingButton } from '@/components/LoadingButton'
 import { validateEmail } from '@/utils/validation'
 
+const MAILHOG_HTTP_URL =
+  process.env.NEXT_PUBLIC_MAILHOG_HTTP_URL || 'http://localhost:8025'
+const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
+
 export default function ForgotPasswordPage() {
   const router = useRouter()
+  const { isGuestMode } = useAuth()
   const api = useApi()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
@@ -167,15 +173,31 @@ export default function ForgotPasswordPage() {
               </Typography>
             </Alert>
 
-            <Box sx={{ textAlign: 'center' }}>
-              <Link
-                href="/auth/mock-email"
-                variant="body2"
-                sx={{ textDecoration: 'none' }}
-              >
-                View Mock Email (Demo)
-              </Link>
-            </Box>
+            {IS_DEVELOPMENT && (
+              <Box sx={{ textAlign: 'center', mb: 2 }}>
+                <Link
+                  href={MAILHOG_HTTP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="body2"
+                  sx={{ textDecoration: 'none' }}
+                >
+                  Open MailHog Inbox
+                </Link>
+              </Box>
+            )}
+
+            {isGuestMode && (
+              <Box sx={{ textAlign: 'center' }}>
+                <Link
+                  href="/auth/mock-email"
+                  variant="body2"
+                  sx={{ textDecoration: 'none' }}
+                >
+                  View Mock Email (Demo)
+                </Link>
+              </Box>
+            )}
           </Paper>
         </Box>
 

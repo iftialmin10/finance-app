@@ -21,12 +21,14 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@m
 import { guestDataService } from '@/services/guestDataService'
 import { LoadingButton } from '@/components/LoadingButton'
 import { standardDialogPaperSx } from '@/components/dialogSizing'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function BackupRestorePage() {
   const router = useRouter()
   const { activeProfile } = useProfile()
   const api = useApi()
   const { startLoading, stopLoading } = useLoading()
+  const { isGuestMode } = useAuth()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [snackbar, setSnackbar] = useState<{
@@ -40,41 +42,70 @@ export default function BackupRestorePage() {
   const [confirmRestoreOpen, setConfirmRestoreOpen] = useState(false)
   const [confirmTypeOpen, setConfirmTypeOpen] = useState(false)
   const [confirmInput, setConfirmInput] = useState('')
-  const requiredConfirmText = activeProfile || 'Finance App'
+  const requiredConfirmText = 'finance-app'
   const [isRestoring, setIsRestoring] = useState(false)
 
   const handleDownloadClick = async () => {
     try {
       setIsDownloading(true)
-      const response = await api.apiCall<{ csv: string }>('/api/backup')
-      if ('success' in response && response.success && response.data?.csv) {
-        const csv = response.data.csv
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        const dateStr = new Date().toISOString().slice(0, 10)
-        const profileSuffix = activeProfile ? `-${activeProfile}` : ''
-        a.href = url
-        a.download = `finance-backup${profileSuffix}-${dateStr}.csv`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-        setSnackbar({
-          open: true,
-          message: 'Backup downloaded successfully',
-          severity: 'success',
-        })
-      } else {
-        const message =
-          ('error' in response && response.error?.message) ||
-          'Failed to generate backup'
-        setSnackbar({
-          open: true,
-          message,
-          severity: 'error',
-        })
+      if (isGuestMode) {
+        const response = await api.apiCall<{ csv: string }>('/api/backup')
+        if ('success' in response && response.success && response.data?.csv) {
+          const csv = response.data.csv
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          const dateStr = new Date().toISOString().slice(0, 10)
+          const profileSuffix = activeProfile ? `-${activeProfile}` : ''
+          a.href = url
+          a.download = `finance-backup${profileSuffix}-${dateStr}.csv`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+          setSnackbar({
+            open: true,
+            message: 'Backup downloaded successfully',
+            severity: 'success',
+          })
+        } else {
+          const message =
+            ('error' in response && response.error?.message) ||
+            'Failed to generate backup'
+          setSnackbar({
+            open: true,
+            message,
+            severity: 'error',
+          })
+        }
+        return
       }
+
+      const response = await fetch('/api/backup', {
+        method: 'GET',
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null)
+        throw new Error(errorPayload?.error?.message || 'Failed to generate backup')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const dateStr = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `finance-backup-${dateStr}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setSnackbar({
+        open: true,
+        message: 'Backup downloaded successfully',
+        severity: 'success',
+      })
     } catch (error: any) {
       setSnackbar({
         open: true,
@@ -112,14 +143,44 @@ export default function BackupRestorePage() {
     try {
       setIsRestoring(true)
       startLoading()
-      const text = await restoreFile.text()
-      // Replace transactions from CSV
-      const { imported } = guestDataService.importTransactionsFromCSV(text)
-      setSnackbar({
-        open: true,
-        message: `Restore complete: imported ${imported} transaction(s).`,
-        severity: 'success',
-      })
+      if (isGuestMode) {
+        const text = await restoreFile.text()
+        const { imported } = guestDataService.importTransactionsFromCSV(text)
+        setSnackbar({
+          open: true,
+          message: `Restore complete: imported ${imported} transaction(s).`,
+          severity: 'success',
+        })
+      } else {
+        const formData = new FormData()
+        formData.append('file', restoreFile, restoreFile.name || 'backup.csv')
+
+        const response = await fetch('/api/restore', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'x-restore-confirm': requiredConfirmText,
+          },
+          credentials: 'include',
+        })
+
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.success) {
+          const message =
+            payload?.error?.message || payload?.message || 'Failed to restore from CSV'
+          throw new Error(message)
+        }
+
+        const restoredSummary = payload.data?.restored ?? {}
+        const restoredCount = restoredSummary.transactionCount ?? 0
+        const deletedCount = restoredSummary.deletedCount ?? 0
+
+        setSnackbar({
+          open: true,
+          message: `Restore complete: imported ${restoredCount} transaction(s), replaced ${deletedCount}.`,
+          severity: 'success',
+        })
+      }
     } catch (error: any) {
       setSnackbar({
         open: true,
@@ -172,7 +233,17 @@ export default function BackupRestorePage() {
               Active Profile: <strong>{activeProfile || 'None selected'}</strong>
             </Typography>
             <Alert severity="info">
-              This backup includes transactions for your app data. Identifiers such as <code>id</code> and <code>user_id</code> are excluded from the CSV.
+              {isGuestMode
+                ? (
+                  <>
+                    This backup includes the mock transactions stored for the demo experience. Identifiers such as <code>id</code> and <code>user_id</code> are excluded from the CSV.
+                  </>
+                )
+                : (
+                  <>
+                    This backup includes every transaction in your account. Identifiers such as <code>id</code> and <code>user_id</code> are excluded from the CSV.
+                  </>
+                )}
             </Alert>
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <LoadingButton variant="contained" onClick={handleDownloadClick} loading={isDownloading}>
@@ -196,7 +267,9 @@ export default function BackupRestorePage() {
               />
             </Box>
             <Typography variant="body2" color="text.secondary">
-              Note: Restore will replace existing mock transactions in guest mode. You will be asked to confirm before proceeding in the next step.
+              {isGuestMode
+                ? 'Note: Restore will replace existing mock transactions in guest mode. You will be asked to confirm before proceeding.'
+                : 'Note: Restore will permanently replace all of your transactions with the contents of the selected CSV backup. You will be asked to confirm before proceeding.'}
             </Typography>
           </Stack>
         </Paper>
@@ -205,7 +278,11 @@ export default function BackupRestorePage() {
         <ConfirmDialog
           open={confirmRestoreOpen}
           title="Confirm Restore"
-          message="This will replace all current mock transactions with the contents of the selected CSV. Do you want to continue?"
+          message={
+            isGuestMode
+              ? 'This will replace all current mock transactions with the contents of the selected CSV. Do you want to continue?'
+              : 'This will permanently replace all transactions in your account with the contents of the selected CSV. Do you want to continue?'
+          }
           confirmText="Continue"
           cancelText="Cancel"
           confirmColor="warning"

@@ -13,21 +13,16 @@ import {
   getCurrentUser as apiGetCurrentUser,
   login as apiLogin,
   logout as apiLogout,
+  deleteAccount as apiDeleteAccount,
   signupRequest as apiSignupRequest,
   verifyEmail as apiVerifyEmail,
   setPassword as apiSetPassword,
   forgotPasswordRequest as apiForgotPasswordRequest,
   verifyResetPasswordToken as apiVerifyResetPasswordToken,
   resetPassword as apiResetPassword,
-  previewProfileRename as apiPreviewProfileRename,
-  renameProfile as apiRenameProfile,
-  previewProfileDelete as apiPreviewProfileDelete,
-  importProfiles as apiImportProfiles,
-  previewTagRename as apiPreviewTagRename,
-  renameTag as apiRenameTag,
-  previewTagDelete as apiPreviewTagDelete,
-  deleteTag as apiDeleteTag,
+  getSetupCatalog as apiGetSetupCatalog,
 } from './api'
+import type { TransactionType } from '@/types'
 import type {
   ApiResponse,
   TransactionsListData,
@@ -63,6 +58,10 @@ export function useApi() {
       // Generic API call
       apiCall: async <T>(endpoint: string, options?: RequestInit) => {
         return callWithLoading(() => apiCallRequest<T>(endpoint, options))
+      },
+
+      getSetupCatalog: async () => {
+        return callWithLoading(() => apiGetSetupCatalog())
       },
 
       // Transaction API calls
@@ -104,6 +103,10 @@ export function useApi() {
         return callWithLoading(() => apiLogout())
       },
 
+      deleteAccount: async () => {
+        return callWithLoading(() => apiDeleteAccount())
+      },
+
       signupRequest: async (email: string) => {
         return callWithLoading(() => apiSignupRequest(email))
       },
@@ -112,8 +115,8 @@ export function useApi() {
         return callWithLoading(() => apiVerifyEmail(token))
       },
 
-      setPassword: async (password: string) => {
-        return callWithLoading(() => apiSetPassword(password))
+      setPassword: async (token: string, password: string) => {
+        return callWithLoading(() => apiSetPassword(token, password))
       },
 
       forgotPasswordRequest: async (email: string) => {
@@ -128,39 +131,6 @@ export function useApi() {
         return callWithLoading(() => apiResetPassword(token, password))
       },
 
-      // Profile API calls
-      previewProfileRename: async (profile: string) => {
-        return callWithLoading(() => apiPreviewProfileRename(profile))
-      },
-
-      renameProfile: async (oldName: string, newName: string) => {
-        return callWithLoading(() => apiRenameProfile(oldName, newName))
-      },
-
-      previewProfileDelete: async (profile: string) => {
-        return callWithLoading(() => apiPreviewProfileDelete(profile))
-      },
-
-      importProfiles: async () => {
-        return callWithLoading(() => apiImportProfiles())
-      },
-
-      // Tag API calls
-      previewTagRename: async (tag: string, profile: string) => {
-        return callWithLoading(() => apiPreviewTagRename(tag, profile))
-      },
-
-      renameTag: async (oldName: string, newName: string, profile: string) => {
-        return callWithLoading(() => apiRenameTag(oldName, newName, profile))
-      },
-
-      previewTagDelete: async (tag: string, profile: string) => {
-        return callWithLoading(() => apiPreviewTagDelete(tag, profile))
-      },
-
-      deleteTag: async (tag: string, profile: string) => {
-        return callWithLoading(() => apiDeleteTag(tag, profile))
-      },
     }
   }, [startLoading, stopLoading])
 }

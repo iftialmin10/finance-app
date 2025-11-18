@@ -1,613 +1,106 @@
-# UI Development Plan - Finance App
+# Postgres Rollout Plan
 
-This document outlines a phased approach to building the entire UI without database access, using mock data. Each phase results in a fully working UI that can be tested and demonstrated.
+This plan keeps guest mode intact (it remains accessible via the in-app Guest Mode button) while introducing a Postgres-backed API powered by Prisma in incremental, UI-testable phases. Spin up the database anytime with `docker compose up -d postgres` from the project root and point `DATABASE_URL` to `postgres://finance_user:finance_pass@localhost:5432/finance_app`. All backend data access must go through `prisma/schema.prisma` and the generated Prisma Client.
 
-## Overview
+**Quick Reference**
+- `docker compose up -d postgres mailhog` runs the full dev stack (Postgres + MailHog).
+- `.env.local` should set `EMAIL_PROVIDER=mailhog`, `MAILHOG_HOST=localhost`, `MAILHOG_PORT=1025`, `MAILHOG_HTTP_URL=http://localhost:8025`, plus Brevo creds for staging/prod.
+- Seeded users (from `npm run prisma:seed`): `demo+verified@finance-app.dev / Password123!` (verified) and `demo+pending@finance-app.dev` (unverified, token `seed-pending-token`).
+- Cypress command for any spec (auto server + reset + teardown):  
+  `npm_config_spec=<spec> PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, run npx prisma migrate reset --force --skip-generate --skip-seed on the local dev database" npm run test:ui`
+- MailHog inbox: http://localhost:8025 — tests clear it via `cy.task('mailhog:clear')` and read via `mailhog:getMessages`.
 
-- **Technology Stack**: Next.js 14+ (App Router), TypeScript, Material-UI (MUI) v5, Recharts
-- **State Management**: React Context API
-- **Mock Data**: Client-side generation using Faker.js
-- **Storage**: IndexedDB for profiles, tags, currencies, and guest mode state
-- **No Backend**: All API calls intercepted and handled with mock data
+**Cypress UI Testing Charter**
+- Cypress is the standard UI test harness for every phase. Add `npm run test:e2e` (Cypress component + e2e runner) and a `tests/reset-db.ts` helper that runs `npx prisma migrate reset --force && npm run prisma:seed`.
+- Before every Cypress spec (via `beforeEach`), call a custom `/api/test/reset` route or invoke the helper directly to ensure the DB is dropped, migrated, and reseeded. This guarantees deterministic fixtures for each test step.
+- Document the reset command next to each phase’s test plan so QA can reproduce the workflow locally and in CI.
 
----
-
-## Phase 1: Project Setup & Foundation
-
-**Goal**: Set up the project structure, dependencies, and core infrastructure.
-
-### Steps
-
-1. **Initialize Next.js Project**
-   - Create Next.js 14+ project with TypeScript
-   - Configure App Router structure
-   - Set up folder structure (`app/`, `components/`, `contexts/`, `utils/`, `services/`, `types/`)
-
-2. **Install Dependencies**
-   - Material-UI (MUI) v5 and icons
-   - Recharts for data visualization
-   - Faker.js (`@faker-js/faker`) for mock data generation
-   - Date manipulation library (date-fns or dayjs)
-
-3. **Configure MUI Theme**
-   - Set up MUI theme provider with custom theme
-   - Define color palette (Primary: #1976d2, Secondary: #dc004e, Success: #4caf50, Error: #f44336)
-   - Configure responsive breakpoints
-   - Set up CssBaseline
-
-4. **Set Up TypeScript Types**
-   - Create `types/index.ts` with all TypeScript interfaces:
-     - `User`, `Transaction`, `TransactionType`
-     - `Profile`, `Tag`, `Currency`
-     - API response types
-
-5. **Create IndexedDB Utilities**
-   - Set up IndexedDB database initialization
-   - Create object stores: `profiles`, `tags`, `currencies`, `settings`, `guestMode`
-   - Implement CRUD utilities for IndexedDB operations
-   - Create helper functions for guest mode state management
-
-6. **Create Mock Data Service**
-   - Set up `services/guestDataService.ts` with `GuestDataService` class
-   - Implement methods for generating mock transactions, statistics, etc.
-   - Use Faker.js for realistic data generation
-   - Implement filtering and querying logic
-
-7. **Set Up API Interception Layer**
-   - Create `utils/api.ts` with API call wrapper
-   - Implement guest mode detection
-   - Route API calls to `GuestDataService` when in guest mode
-   - Simulate network delays (50-150ms)
-
-8. **Create Context Providers Structure**
-   - Set up context files (empty implementations for now):
-     - `AuthContext.tsx`
-     - `LoadingContext.tsx`
-     - `ProfileContext.tsx`
-     - `TagContext.tsx`
-     - `CurrencyContext.tsx`
-     - `AppContext.tsx`
-
-**Deliverable**: Project structure ready, dependencies installed, IndexedDB utilities working, mock data service functional.
+**Automated Server/Test Lifecyle Policy**
+1. For any Cypress UI test case, developers invoke a single command: `npm run test:ui -- --spec <path/to/spec.cy.ts>`.
+2. The `test:ui` script must:
+   - Start the Next.js server (and supporting services like Postgres) in the background using `start-server-and-test` or an equivalent wrapper.
+   - Wait until the health check (`/api/health`) returns `ok: true`.
+   - Call the DB reset helper to ensure deterministic state.
+   - Launch Cypress (headed or headless depending on `CI` env) against the running server.
+   - When Cypress exits (success or failure), automatically shut down the server and any background processes, returning the same exit code as Cypress.
+3. CI pipelines use this policy verbatim, ensuring that each spec start-to-finish is self-contained: spin up ➜ reset/seed ➜ test ➜ tear down.
 
 ---
 
-## Phase 2: Core Components & Context Providers
+## Phase 0 – Storage & Feature Flag Baseline
 
-**Goal**: Build reusable components and context providers that will be used throughout the app.
+**Goal:** Introduce the Postgres schema, migrations, and plumbing required to toggle between guest mode and the real API without impacting today’s UX.
 
-### Steps
+**Steps**
+1. Define the initial Prisma schema (`prisma/schema.prisma`) that mirrors the data models described in `design/ui/data-models.md`, focusing on just two tables: `users` (auth-only fields) and `transactions` (each row stores `profile`, `currency`, `tags`, `note`, timestamps). There is no separate metadata store—profiles/currencies/tags only exist as values embedded in transactions.
+2. Add Prisma migration + seed scripts (`prisma/migrations`, `prisma/seed.ts`) that create an initial admin user plus demo transactions covering multiple profiles/currencies/tags for smoke testing (these rows become the source of truth for derived lists).
+3. Extend app configuration (e.g., `.env.local`) with `DATABASE_URL`, `SESSION_SECRET`, and a `NEXT_PUBLIC_FORCE_GUEST_MODE` flag that lets developers simulate pressing the Guest Mode button automatically (useful for demos) while keeping the normal user flow unchanged.
+4. Create shared backend utilities: DB client, hashing helpers, transactional wrapper, and standardized API response helpers.
+5. Expose a health-check route (e.g., `GET /api/health`) that confirms Prisma can connect to Postgres; wire it into developer docs so QA can validate the stack quickly.
+6. Bootstrap Cypress: add `cypress.config.ts`, seed-friendly fixtures, the DB reset helper/route, and a smoke spec (`phase0-health.cy.ts`) that (a) triggers the reset, (b) visits `/api/health`, and (c) verifies guest mode toggle still works.
 
-1. **Implement LoadingContext**
-   - Create `LoadingContext` with request counter
-   - Implement `startLoading()` and `stopLoading()` functions
-   - Create `GlobalProgressBar` component (fixed at top, LinearProgress)
-   - Wrap app with `LoadingProvider`
-
-2. **Implement AuthContext**
-   - Create `AuthContext` with guest mode state management
-   - Implement `enterGuestMode()` and `exitGuestMode()` functions
-   - Add guest mode state persistence in IndexedDB
-   - Create mock user state for guest mode
-
-3. **Implement ProfileContext**
-   - Create `ProfileContext` with profiles list and active profile
-   - Implement CRUD operations (add, rename, delete, switch)
-   - Load/save profiles from/to IndexedDB
-   - Implement profile auto-population from mock transactions
-
-4. **Implement TagContext**
-   - Create `TagContext` with tags for active profile
-   - Implement CRUD operations (add, edit, delete)
-   - Filter tags by transaction type (expense/income)
-   - Load/save tags from/to IndexedDB
-
-5. **Implement CurrencyContext**
-   - Create `CurrencyContext` with currencies list and default currency
-   - Implement CRUD operations (add, edit, delete, set default)
-   - Load/save currencies from/to IndexedDB
-
-6. **Create Shared Components**
-   - `Header` component (AppBar with logo, user info, logout)
-   - `GlobalProgressBar` component (already created in step 1)
-   - `GuestModeIndicator` component (floating icon on right side)
-   - `ProfileSelector` component (dropdown for profile switching)
-   - `ConfirmDialog` component (reusable confirmation modal)
-   - `Snackbar` component (toast notifications)
-   - `DatePicker` component (date input with MUI)
-   - `AmountInput` component (formatted number input)
-   - `CurrencySelector` component (dropdown with "Add New Currency" option)
-   - `TagChip` component (colored tag display)
-   - `EmptyState` component (no data placeholder)
-
-7. **Create Layout Components**
-   - Root layout with all context providers
-   - Page layout wrapper with Header and GlobalProgressBar
-   - GuestModeIndicator in root layout
-
-**Deliverable**: All context providers working, shared components created and reusable, guest mode indicator functional.
+**UI testing on completion:** Run `npm run test:e2e -- --spec phase0-health.cy.ts` (Cypress automatically resets + seeds before the test). The spec should confirm the health endpoint returns `ok: true`, guest mode toggle still works, and the seeded transactions exist after reset.
 
 ---
 
-## Phase 3: Authentication Pages
+## Phase 1 – Auth & Session Routes
 
-**Goal**: Build all authentication-related pages with mock functionality.
+**Goal:** Power the entire auth flow (`/app/auth/*`) with Postgres while still allowing guest mode sessions.
 
-### Steps
+**Steps**
+1. Implement `/api/auth/signup-request`, `/api/auth/verify`, `/api/auth/set-password`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/session`, `/api/auth/forgot-password-request`, `/api/auth/reset-password-verify`, and `/api/auth/reset-password` using the `users` table (add whatever scalar columns you need for token hashes/expiry while keeping the schema limited to this table).
+2. Add password hashing (bcrypt/argon2), session tokens (JWT or database-backed sessions), and enforce email verification gates exactly as described in `design/ui/api`, persisting everything through Prisma.
+3. Provide dev-friendly email delivery by plugging the routes into Brevo sandbox or a mail catcher while keeping guest-mode stubs active when `NEXT_PUBLIC_FORCE_GUEST_MODE=true`.
+4. Update the AuthContext to detect when Prisma-backed routes are available (feature flag + health check) and to respect the Guest Mode button state so requests are routed to guest data only when the user explicitly opts in.
+5. Seed test accounts (verified + unverified) so UI testers can immediately run through the auth pages without manual setup (the seed script already runs before each Cypress test).
+6. Add Cypress specs (`phase1-auth.cy.ts`) that cover signup → verify → login → logout → reset password, invoking the DB reset helper in `beforeEach`.
+7. Ship self-service account deletion by exposing a `DELETE /api/account` route that removes the authenticated user (cascading transactions), clears the session cookie, mirrors the flow in guest mode, and surfaces a destructive “Delete Account” control in the dashboard UI with appropriate confirmation UX.
 
-1. **Sign In Page** (`/auth/signin`)
-   - Create sign in form (email, password, remember me)
-   - Add "Continue as Guest" button (prominent)
-   - Link to sign up page
-   - Link to forgot password page
-   - Implement form validation
-   - Mock authentication (always succeeds in guest mode)
-   - Redirect to dashboard on success
-
-2. **Sign Up Page** (`/auth/signup`)
-   - Create sign up form (email)
-   - Implement form validation
-   - Mock email verification flow
-   - Show "Check your email" message
-   - Link to sign in page
-
-3. **Verify Page** (`/auth/verify`)
-   - Create verification page
-   - Mock verification success
-   - Redirect to set password page
-
-4. **Set Password Page** (`/auth/set-password`)
-   - Create password setup form
-   - Implement password validation
-   - Mock password setup
-   - Redirect to setup page after success
-
-5. **Forgot Password Page** (`/auth/forgot-password`)
-   - Create forgot password form (email)
-   - Implement form validation
-   - Mock email sending
-   - Show "Check your email" message
-
-6. **Reset Password Page** (`/auth/reset-password`)
-   - Create reset password form
-   - Implement password validation
-   - Mock password reset
-   - Redirect to sign in page
-
-7. **Mock Email Page** (`/auth/mock-email`)
-   - Create mock email display page (for demo purposes)
-   - Show verification/reset links
-   - Allow clicking links to simulate email clicks
-
-**Deliverable**: All authentication pages functional with mock data, guest mode entry working, navigation between auth pages working.
+**UI testing on completion:** Execute `npm run test:e2e -- --spec phase1-auth.cy.ts`. Cypress should: reset + seed, walk through signup/verify/login/logout flows, confirm session persistence, and finally toggle Guest Mode to ensure the fallback still works.
 
 ---
 
-## Phase 4: Setup & Dashboard
+## Phase 2 – Profiles, Currencies & User Settings
 
-**Goal**: Build the initial setup flow and main dashboard.
+**Goal:** Back the Profiles (`/app/profiles`), Setup (`/app/setup`), and Currencies (`/app/currencies`) screens by deriving their state directly from the `transactions` table (distinct profile/currency values) and mutating those rows to keep the UI in sync.
 
-### Steps
+**Steps**
+1. Build `/api/profiles/rename`, `/api/profiles/rename/preview`, `/api/profiles/delete/preview`, `/api/profiles/import`, plus CRUD routes for creating/deleting profiles by issuing bulk updates/selects against the `transactions` table (e.g., `UPDATE transactions SET profile = $new WHERE userId = $user AND profile = $old`).
+2. Implement `/api/currencies` endpoints (list, create, update, delete, set default) by reading distinct currencies from transactions and applying updates by rewriting the relevant rows (or inserting seed transactions when a brand-new currency is created).
+3. Ensure preview endpoints leverage Postgres queries (`SELECT COUNT(*) FROM transactions WHERE profile = $X`) before destructive actions.
+4. Introduce server-side validation for per-user profile names and currency codes prior to mutating transaction rows, and bubble errors through existing `Snackbar` patterns on the UI.
+5. Update client hooks/contexts to call these Prisma-backed mutation endpoints when the user is in normal mode, while continuing to route requests to IndexedDB-backed guest logic whenever the Guest Mode button is active.
+6. Create Cypress specs (`phase2-profiles.cy.ts`, `phase2-currencies.cy.ts`) that, for each scenario, call the DB reset helper, perform profile rename/delete/import actions, perform currency CRUD, and assert that the underlying transactions reflect the changes.
 
-1. **Setup Page** (`/setup`)
-   - Create multi-step wizard component
-   - Step 1: Welcome & Introduction
-   - Step 2: Create Profile (name input, save to IndexedDB)
-   - Step 3: Choose First Currency (dropdown with popular currencies, save to IndexedDB)
-   - Step 4: Initialize default tags (save to IndexedDB)
-   - Step indicator showing progress
-   - Form validation at each step
-   - Redirect to dashboard on completion
-
-2. **Dashboard Page** (`/`)
-   - Create dashboard layout
-   - Add ProfileSelector component (dropdown with active profile)
-   - Add Quick Summary section (optional: current month stats)
-   - Create action buttons grid:
-     - Create Transaction
-     - View Transactions
-     - Edit Tags
-     - Manage Currencies
-     - Statistics
-     - Manage Profiles
-     - Backup & Restore
-   - Load mock statistics for quick summary
-   - Display active profile name prominently
-   - Add GuestModeIndicator (if in guest mode)
-
-3. **App Startup Logic**
-   - Check if user is in guest mode (from IndexedDB)
-   - Check if profiles exist in IndexedDB
-   - If no profiles: auto-populate from mock transactions
-   - If no active profile: set first profile as active
-   - Redirect logic: guest mode → dashboard, authenticated → dashboard or setup
-
-**Deliverable**: Setup wizard functional, dashboard displaying with all action buttons, profile switching working, guest mode indicator visible.
+**UI testing on completion:** Run `npm run test:e2e -- --spec phase2-*.cy.ts`. Each spec should start by resetting/seeding the DB, exercise the relevant UI flows, and finish by confirming the transactions table (queried via Cypress task) matches expectations.
 
 ---
 
-## Phase 5: Transaction Management
+## Phase 3 – Tags & Transactions
 
-**Goal**: Build transaction creation, viewing, editing, and deletion with mock data.
+**Goal:** Replace the guest-only flow for `/app/tags`, `/app/transactions`, and `/app/transactions/create` with Postgres-backed data sourced solely from the `transactions` table (each row already contains profile/currency/tag data), including statistics inputs.
 
-### Steps
+**Steps**
+1. Implement `/api/tags/rename`, `/api/tags/rename/preview`, `/api/tags/delete/preview`, `/api/tags` (DELETE + future POST) by updating the `tags` arrays stored on the relevant transactions (e.g., `UPDATE ... SET tags = array_replace(tags, $old, $new)`), ensuring consistency across all rows.
+2. Create full CRUD for `/api/transactions` (list with filtering/sorting/pagination, create, update, delete, detail) using Prisma queries over the `transactions` table indexed by `userId`, `profile`, and `type`.
+3. Mirror the guest-mode filtering logic (date range, profile, type, pagination) inside Prisma queries so UI expectations stay identical.
+4. Add optimistic UI updates plus background revalidation so the experience matches the current mock behavior.
+5. Write integration tests (Playwright or Vitest API tests) to ensure pagination, validation errors, and permission boundaries are correct.
+6. Expand the Cypress suite with `phase3-tags.cy.ts` and `phase3-transactions.cy.ts`, each invoking the reset helper in `beforeEach`, then validating tag rename/delete previews, transaction CRUD, and statistics widgets.
 
-1. **Create Transaction Page** (`/transactions/create`)
-   - Create transaction form:
-     - Transaction type toggle (Expense/Income)
-     - Date picker
-     - Amount input
-     - Currency selector (from IndexedDB with "Add New Currency" option)
-     - Description input
-     - Tag selector (filtered by transaction type)
-   - Implement inline currency addition dialog
-   - Add "Recent Transactions" section (last 5 entries)
-   - Form validation
-   - Mock transaction creation (save to GuestDataService)
-   - Success message and redirect/navigation
-
-2. **View Transactions Page** (`/transactions`)
-   - Create filter controls:
-     - Type filter tabs (All/Expense/Income with counts)
-     - Tag filter dropdown
-     - Date range filter (optional)
-     - Search box
-   - Create year/month accordion list
-   - Display transactions grouped by month
-   - Show month summary (income, expense, balance)
-   - Color-coded amounts (red for expense, green for income)
-   - Edit and Delete buttons for each transaction
-   - Empty state when no transactions
-   - Load transactions from GuestDataService
-
-3. **Edit Transaction Modal**
-   - Create edit modal component
-   - Pre-fill form with transaction data
-   - Same form fields as create transaction
-   - Mock transaction update (update in GuestDataService)
-   - Success message and table refresh
-
-4. **Delete Transaction Modal**
-   - Create delete confirmation modal
-   - Show transaction details
-   - Mock transaction deletion (remove from GuestDataService)
-   - Success message and table refresh
-
-**Deliverable**: Full transaction CRUD working with mock data, filtering and search functional, responsive design.
+**UI testing on completion:** Execute `npm run test:e2e -- --spec phase3-*.cy.ts` after each feature. Cypress will reset/seed before every spec, ensuring deterministic tag + transaction data.
 
 ---
 
-## Phase 6: Profile Management
+## Phase 4 – Backup/Restore & Statistics
 
-**Goal**: Build profile management page with create, rename, delete, and switch functionality.
+**Goal:** Deliver the remaining `/app/backup-restore` and `/app/statistics` flows using Postgres so all routes are fully implemented.
 
-### Steps
+**Steps**
+1. Implement `/api/backup` to stream CSV (or JSON) exports generated from Prisma queries, and `/api/restore` to validate + ingest CSV uploads inside a Prisma-managed transaction with per-row error reporting.
+3. Port `/api/statistics` to Prisma aggregations (SUM, COUNT, GROUP BY tag/profile) including currency normalization if multi-currency transactions are involved.
+5. Update UI pages to handle progress indicators, and error states based on the new API responses.
+6. Add Cypress specs (`phase4-backup.cy.ts`, `phase4-statistics.cy.ts`) whose `beforeEach` resets/seeds the DB, then runs through backup download, restore upload (with sample CSV), and dashboard/statistics verification.
 
-1. **Manage Profiles Page** (`/profiles`)
-   - Create profiles list display
-   - Show active profile prominently
-   - Display all profiles from IndexedDB
-   - Add "Import from Database" button (scans mock transactions)
-   - Create profile form (name input)
-   - Profile item actions:
-     - Set as Active button (if not active)
-     - Active badge (if active)
-     - Rename button
-     - Delete button (disabled if active)
-
-2. **Rename Profile Modal**
-   - Create rename modal component
-   - Show current profile name
-   - Input for new name
-   - Preview affected transaction count (from mock data)
-   - Confirmation dialog
-   - Mock profile rename (update in IndexedDB and mock transactions)
-   - Success message
-
-3. **Delete Profile Modal**
-   - Create delete modal component
-   - Check if profile is used in transactions (from mock data)
-   - Show error if profile is used
-   - Confirmation dialog if not used
-   - Mock profile deletion (remove from IndexedDB)
-   - Success message
-
-4. **Profile Auto-Population**
-   - Implement startup auto-population logic
-   - Scan mock transactions for unique profile names
-   - Add profiles to IndexedDB if empty
-   - Set first profile as active if no active profile
-
-**Deliverable**: Profile management fully functional, rename/delete with validation, profile switching instant.
-
----
-
-## Phase 7: Tag Management
-
-**Goal**: Build tag management page with create, edit, delete, and import functionality.
-
-### Steps
-
-1. **Edit Tags Page** (`/tags`)
-   - Create tags list display
-   - Separate sections for Expense Tags and Income Tags
-   - Display tags with color chips
-   - Add "Import from Database" button (scans mock transactions)
-   - Create tag form:
-     - Type selector (Expense/Income)
-     - Name input
-     - Color picker
-   - Tag item actions:
-     - Edit button
-     - Delete button
-
-2. **Edit Tag Modal**
-   - Create edit modal component
-   - Pre-fill form with tag data
-   - Allow editing name, type, and color
-   - Preview affected transaction count (from mock data)
-   - Confirmation dialog if name changed
-   - Mock tag rename (update in IndexedDB and mock transactions)
-   - Success message
-
-3. **Delete Tag Modal**
-   - Create delete modal component
-   - Check if tag is used in transactions (from mock data)
-   - Show error if tag is used
-   - Confirmation dialog if not used
-   - Mock tag deletion (remove from IndexedDB)
-   - Success message
-
-4. **Import Tags from Database**
-   - Implement import functionality
-   - Scan mock transactions for unique tags
-   - Extract tags with their types
-   - Add new tags to IndexedDB (skip existing)
-   - Show success message with counts
-
-**Deliverable**: Tag management fully functional, color coding working, import from mock data working.
-
----
-
-## Phase 8: Currency Management
-
-**Goal**: Build currency management page with create, edit, delete, and import functionality.
-
-### Steps
-
-1. **Manage Currencies Page** (`/currencies`)
-   - Create currencies list display
-   - Show default currency prominently
-   - Display all currencies from IndexedDB
-   - Add "Import from Database" button (scans mock transactions)
-   - Create currency form:
-     - Currency code input (3 letters, uppercase)
-     - Validation
-   - Currency item actions:
-     - Set as Default button (if not default)
-     - Default badge (if default)
-     - Edit button
-     - Delete button
-
-2. **Edit Currency Modal**
-   - Create edit modal component
-   - Allow editing currency code
-   - Validation (3 uppercase letters)
-   - Mock currency update (update in IndexedDB)
-   - Success message
-
-3. **Delete Currency Modal**
-   - Create delete modal component
-   - Check if currency is used in transactions (from mock data)
-   - Show error if currency is used
-   - Confirmation dialog if not used
-   - Mock currency deletion (remove from IndexedDB)
-   - Success message
-
-4. **Import Currencies from Database**
-   - Implement import functionality
-   - Scan mock transactions for unique currencies
-   - Add new currencies to IndexedDB (skip existing)
-   - Show success message with counts
-
-5. **Inline Currency Addition**
-   - Enhance CurrencySelector component
-   - Add "Add New Currency" option in dropdown
-   - Show inline dialog when selected
-   - Validate and save to IndexedDB
-   - Auto-select newly added currency
-
-**Deliverable**: Currency management fully functional, inline addition working, default currency setting working.
-
----
-
-## Phase 9: Statistics Page
-
-**Goal**: Build statistics page with charts and summaries using mock data.
-
-### Steps
-
-1. **Statistics Page** (`/statistics`)
-   - Create filter controls:
-     - Year selector dropdown
-     - Month selector dropdown
-     - Currency selector (only currencies used in selected period)
-   - Create summary cards:
-     - Total Income (green)
-     - Total Expense (red)
-     - Net Balance (blue)
-   - Create Expense Breakdown Pie Chart (by tags, filtered by currency)
-   - Create Income vs Expense Bar Chart (filtered by currency)
-   - Load statistics from GuestDataService
-   - Filter by selected currency (no conversion)
-   - Empty state when no data
-
-2. **Chart Components**
-   - Implement pie chart using Recharts
-   - Implement bar chart using Recharts
-   - Color coding (red for expenses, green for incomes)
-   - Responsive design
-   - Smooth animations
-
-3. **Statistics Calculation**
-   - Implement aggregation logic in GuestDataService
-   - Filter by year, month, currency, profile
-   - Calculate totals by tag
-   - Calculate income vs expense totals
-
-**Deliverable**: Statistics page fully functional with charts, filtering working, responsive design.
-
----
-
-## Phase 10: Backup & Restore
-
-**Goal**: Build backup and restore functionality with CSV export/import.
-
-### Steps
-
-1. **Backup & Restore Page** (`/backup-restore`)
-   - Create page layout
-   - Add "Download Backup" button (primary)
-   - Add "Restore from CSV" button (secondary, danger style)
-   - Display active profile name
-   - Info text about backup contents
-
-2. **Download Backup**
-   - Create backup generation function
-   - Export mock transactions to CSV format
-   - Exclude `id` and `user_id` columns
-   - Trigger browser download
-   - Show global progress bar during export
-   - Success message
-
-3. **Restore from CSV**
-   - Create file picker (CSV only)
-   - Create double confirmation dialog:
-     - First dialog: warning about data replacement
-     - Second dialog: type-to-confirm app/profile name
-   - Parse CSV file
-   - Validate CSV format
-   - Replace mock transactions in GuestDataService
-   - Show global progress bar during restore
-   - Success message and data refresh
-
-**Deliverable**: Backup and restore fully functional with CSV export/import, confirmation dialogs working.
-
----
-
-## Phase 11: Polish & Enhancements
-
-**Goal**: Add final polish, animations, error handling, and edge cases.
-
-### Steps
-
-1. **Error Handling**
-   - Add error boundaries
-   - Implement error states for all pages
-   - Add error messages for failed operations
-   - Handle network errors gracefully
-
-2. **Loading States**
-   - Add loading spinners to all buttons during API calls
-   - Disable buttons during operations
-   - Add skeleton loaders for data-heavy pages
-   - Ensure global progress bar works everywhere
-
-3. **Animations & Transitions**
-   - Add smooth page transitions (200-400ms)
-   - Add component transitions (150-300ms)
-   - Add micro-interactions (100-200ms)
-   - Respect `prefers-reduced-motion`
-   - Use MUI transition components
-
-4. **Form Validation**
-   - Enhance all form validations
-   - Add real-time validation feedback
-   - Show inline error messages
-   - Prevent invalid submissions
-
-8. **Performance Optimization**
-   - Optimize re-renders with React.memo
-   - Lazy load heavy components
-   - Optimize chart rendering
-   - Minimize IndexedDB queries
-
-**Deliverable**: Fully polished UI with smooth animations, comprehensive error handling, responsive design, and all edge cases handled.
-
-
----
-
-## Mock Data Strategy
-
-### GuestDataService Implementation
-
-The `GuestDataService` class should:
-
-1. **Initialize with Seed Data**
-   - Generate 20-50 initial transactions
-   - Use consistent seed for deterministic data
-   - Include multiple profiles, currencies, and tags
-
-2. **Transaction Operations**
-   - `getTransactions(params)` - Filter and return transactions
-   - `createTransaction(data)` - Add new transaction
-   - `updateTransaction(id, data)` - Update existing transaction
-   - `deleteTransaction(id)` - Remove transaction
-
-3. **Statistics Operations**
-   - `getStatistics(params)` - Calculate aggregated statistics
-   - Filter by profile, currency, date range
-   - Return totals, breakdowns, and chart data
-
-4. **Data Persistence**
-   - Store transactions in memory (Map or array)
-   - Persist to localStorage (optional, for demo purposes)
-   - Reset on guest mode exit
-
-### IndexedDB Mock Data
-
-For IndexedDB (profiles, tags, currencies):
-
-1. **Initial Setup**
-   - Create default profile ("Personal")
-   - Create default currency ("USD")
-   - Create default tags (Food, Transport, Shopping, Salary, etc.)
-
-2. **Guest Mode Setup**
-   - Populate with fake profiles, tags, and currencies
-   - Use Faker.js for realistic names
-   - Set active profile and default currency
-
----
-
-## Success Criteria
-
-After completing all phases, the application should:
-
-✅ All pages functional with mock data  
-✅ Guest mode working end-to-end  
-✅ Profile switching instant and working  
-✅ Transaction CRUD fully functional  
-✅ Tag management working with colors  
-✅ Currency management working  
-✅ Statistics page with charts functional  
-✅ Backup and restore working  
-✅ Responsive design on all devices  
-✅ Smooth animations and transitions  
-✅ Error handling comprehensive  
-✅ Loading states everywhere  
-✅ No database access required  
-✅ All UI features working independently  
-
----
-
-## Notes
-
-- Each phase should be completed and tested before moving to the next
-- Mock data should be realistic and cover various scenarios
-- Guest mode should work seamlessly without any backend
-- IndexedDB operations should be instant (no delays)
-- API calls should simulate network delays (50-150ms)
-- All components should follow MUI design guidelines
-- Code should be well-organized and maintainable
+**UI testing on completion:** Run `npm run test:e2e -- --spec phase4-*.cy.ts`. Each spec starts from a reset/seeded DB, exercises backup/restore/statistics, and finally asserts the ledger matches the expected dataset.
 

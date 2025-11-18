@@ -44,7 +44,7 @@ export function EditCurrencyModal({
       setCode(currency.code)
       setInputError(null)
     }
-  }, [open, currency?.code])
+  }, [open, currency])
 
   const validate = (): boolean => {
     if (!normalizedCode) {

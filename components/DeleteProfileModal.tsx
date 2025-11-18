@@ -45,9 +45,17 @@ export function DeleteProfileModal({
       const loadPreview = async () => {
         try {
           setIsLoadingPreview(true)
-          const response = await api.previewProfileDelete(profileName)
-          if (response.success) {
-            setAffectedCount(response.data?.affectedCount ?? 0)
+          const response = await api.getTransactions({
+            profile: profileName,
+            limit: 1,
+            offset: 0,
+          })
+          if (response.success && response.data) {
+            setAffectedCount(
+              response.data.pagination?.total ??
+                response.data.transactions?.length ??
+                0
+            )
           } else {
             setAffectedCount(0)
           }

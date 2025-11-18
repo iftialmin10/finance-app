@@ -8,6 +8,9 @@ import type { Profile, Tag, Currency, AppSettings } from '@/types'
 
 const DB_NAME = 'FinanceAppDB'
 const DB_VERSION = 1
+const FORCE_GUEST_MODE =
+  typeof process !== 'undefined' &&
+  process.env.NEXT_PUBLIC_FORCE_GUEST_MODE === 'true'
 
 // Object store names
 const STORE_PROFILES = 'profiles'
@@ -182,6 +185,38 @@ export async function deleteProfile(name: string): Promise<void> {
   })
 }
 
+/**
+ * Replace all profiles in the store
+ */
+export async function overwriteProfiles(profiles: Profile[]): Promise<void> {
+  const db = await initDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_PROFILES], 'readwrite')
+    const store = transaction.objectStore(STORE_PROFILES)
+
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => {
+      reject(transaction.error || new Error('Failed to overwrite profiles'))
+    }
+    transaction.onabort = () => {
+      reject(transaction.error || new Error('Failed to overwrite profiles'))
+    }
+
+    const clearRequest = store.clear()
+    clearRequest.onerror = () => {
+      reject(clearRequest.error || new Error('Failed to clear profiles'))
+    }
+    clearRequest.onsuccess = () => {
+      if (!profiles.length) {
+        return
+      }
+      profiles.forEach((profile) => {
+        store.put(profile)
+      })
+    }
+  })
+}
+
 // ============================================================================
 // Tag Operations
 // ============================================================================
@@ -306,6 +341,50 @@ export async function deleteTag(id: string): Promise<void> {
   })
 }
 
+/**
+ * Replace all tags for a specific profile
+ */
+export async function overwriteTagsForProfile(
+  profile: string,
+  tags: Tag[]
+): Promise<void> {
+  const db = await initDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_TAGS], 'readwrite')
+    const store = transaction.objectStore(STORE_TAGS)
+    const index = store.index('profile')
+    let cleared = false
+
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => {
+      reject(transaction.error || new Error('Failed to overwrite tags'))
+    }
+    transaction.onabort = () => {
+      reject(transaction.error || new Error('Failed to overwrite tags'))
+    }
+
+    const cursorRequest = index.openCursor(IDBKeyRange.only(profile))
+    cursorRequest.onerror = () => {
+      reject(cursorRequest.error || new Error('Failed to read tags'))
+    }
+    cursorRequest.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+      if (cursor) {
+        cursor.delete()
+        cursor.continue()
+      } else if (!cleared) {
+        cleared = true
+        if (!tags.length) {
+          return
+        }
+        tags.forEach((tag) => {
+          store.put(tag)
+        })
+      }
+    }
+  })
+}
+
 // ============================================================================
 // Currency Operations
 // ============================================================================
@@ -412,6 +491,41 @@ export async function deleteCurrency(code: string): Promise<void> {
 
     request.onerror = () => reject(request.error)
     request.onsuccess = () => resolve()
+  })
+}
+
+/**
+ * Replace all currencies in the store
+ */
+export async function overwriteCurrencies(currencies: Currency[]): Promise<void> {
+  const db = await initDB()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_CURRENCIES], 'readwrite')
+    const store = transaction.objectStore(STORE_CURRENCIES)
+
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => {
+      reject(transaction.error || new Error('Failed to overwrite currencies'))
+    }
+    transaction.onabort = () => {
+      reject(transaction.error || new Error('Failed to overwrite currencies'))
+    }
+
+    const clearRequest = store.clear()
+    clearRequest.onerror = () => {
+      reject(clearRequest.error || new Error('Failed to clear currencies'))
+    }
+    clearRequest.onsuccess = () => {
+      if (!currencies.length) {
+        return
+      }
+      currencies.forEach((currency) => {
+        store.put({
+          ...currency,
+          code: currency.code.toUpperCase(),
+        })
+      })
+    }
   })
 }
 
@@ -560,6 +674,10 @@ export async function setActiveProfile(profileName: string): Promise<void> {
  * Get guest mode state
  */
 export async function getGuestModeState(): Promise<boolean> {
+  if (FORCE_GUEST_MODE) {
+    return true
+  }
+
   if (typeof window === 'undefined') return false
 
   try {

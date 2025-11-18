@@ -47,17 +47,24 @@ export function RenameProfileModal({
     if (open) {
       setNewName(profileName)
       setInputError(null)
-      // Load preview
       const loadPreview = async () => {
         try {
           setIsLoadingPreview(true)
-          const response = await api.previewProfileRename(profileName)
-          if (response.success) {
-            setAffectedCount(response.data?.affectedCount ?? 0)
+          const response = await api.getTransactions({
+            profile: profileName,
+            limit: 1,
+            offset: 0,
+          })
+          if (response.success && response.data) {
+            setAffectedCount(
+              response.data.pagination?.total ??
+                response.data.transactions?.length ??
+                0
+            )
           } else {
             setAffectedCount(0)
           }
-        } catch (e) {
+        } catch {
           setAffectedCount(0)
         } finally {
           setIsLoadingPreview(false)

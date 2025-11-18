@@ -73,13 +73,25 @@ export function EditTagModal({
       setType(tag.type)
       setColor(tag.color || '#1976d2')
       setInputError(null)
-      // Load preview for rename (affected transactions) once
       const loadPreview = async () => {
+        if (!activeProfile) {
+          setAffectedCount(0)
+          return
+        }
         try {
           setIsLoadingPreview(true)
-          const response = await api.previewTagRename(tag.name, activeProfile || '')
-          if (response.success) {
-            setAffectedCount(response.data?.affectedCount ?? 0)
+          const response = await api.getTransactions({
+            profile: activeProfile,
+            tag: tag.name,
+            limit: 1,
+            offset: 0,
+          })
+          if (response.success && response.data) {
+            setAffectedCount(
+              response.data.pagination?.total ??
+                response.data.transactions?.length ??
+                0
+            )
           } else {
             setAffectedCount(0)
           }

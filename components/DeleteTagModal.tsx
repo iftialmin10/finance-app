@@ -46,9 +46,18 @@ export function DeleteTagModal({
       const loadPreview = async () => {
         try {
           setIsLoadingPreview(true)
-          const response = await api.previewTagDelete(tag.name, activeProfile)
-          if (response.success) {
-            setAffectedCount(response.data?.affectedCount ?? 0)
+          const response = await api.getTransactions({
+            profile: activeProfile,
+            tag: tag.name,
+            limit: 1,
+            offset: 0,
+          })
+          if (response.success && response.data) {
+            setAffectedCount(
+              response.data.pagination?.total ??
+                response.data.transactions?.length ??
+                0
+            )
           } else {
             setAffectedCount(0)
           }

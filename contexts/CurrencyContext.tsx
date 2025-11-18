@@ -1,12 +1,18 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import type { Currency } from '@/types'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  ReactNode,
+} from 'react'
+import type { Currency, Transaction, TransactionQueryParams } from '@/types'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   getAllCurrencies,
   getCurrency,
-  getDefaultCurrency,
   addCurrency as addCurrencyDB,
   updateCurrency as updateCurrencyDB,
   deleteCurrency as deleteCurrencyDB,
@@ -46,47 +52,106 @@ function validateCurrencyCode(code: string): void {
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const api = useApi()
-  const { user, isGuestMode } = useAuth()
+  const { user, isGuestMode, isLoading: authLoading } = useAuth()
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [defaultCurrency, setDefaultCurrency] = useState<Currency | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const activeLoadCountRef = useRef(0)
+  const authStateKey = user ? `user:${user.id}` : isGuestMode ? 'guest' : 'signed-out'
+
+  const TRANSACTION_PAGE_SIZE = 200
+
+  const countTransactions = async (
+    params: TransactionQueryParams = {}
+  ): Promise<number> => {
+    const response = await api.getTransactions({
+      ...params,
+      limit: 1,
+      offset: 0,
+    })
+    if (!response.success || !response.data) {
+      throw new Error(
+        response.error?.message || 'Failed to count transactions.'
+      )
+    }
+    return (
+      response.data.pagination?.total ??
+      response.data.transactions?.length ??
+      0
+    )
+  }
+
+  const fetchTransactions = async (
+    params: TransactionQueryParams = {}
+  ): Promise<Transaction[]> => {
+    const results: Transaction[] = []
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const response = await api.getTransactions({
+        ...params,
+        limit: TRANSACTION_PAGE_SIZE,
+        offset,
+      })
+      if (!response.success || !response.data) {
+        throw new Error(
+          response.error?.message || 'Failed to load transactions.'
+        )
+      }
+      results.push(...(response.data.transactions ?? []))
+      hasMore = response.data.pagination?.hasMore ?? false
+      offset += TRANSACTION_PAGE_SIZE
+      if (!hasMore) {
+        break
+      }
+    }
+
+    return results
+  }
 
   useEffect(() => {
-    loadCurrencies()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Reset or reload currencies when auth state changes (e.g., after sign out/in)
-  useEffect(() => {
-    // If signed out (no user) and not in guest mode, clear in-memory state
-    if (!user && !isGuestMode) {
-      setCurrencies([])
-      setDefaultCurrency(null)
+    if (authLoading) {
       return
     }
-    // When a user (or guest) is available, reload from IndexedDB
+
+    // When fully signed out (non-guest), ensure state is cleared without hitting the API
+    if (authStateKey === 'signed-out') {
+      setCurrencies([])
+      setDefaultCurrency(null)
+      setError(null)
+      setIsLoading(false)
+      return
+    }
+
+    // When a user (or guest) is available, reload currencies
     loadCurrencies()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isGuestMode])
+  }, [authStateKey, authLoading])
 
   const loadCurrencies = async (options: { showLoader?: boolean } = {}) => {
     const { showLoader = true } = options
     try {
+      activeLoadCountRef.current += 1
       if (showLoader) {
         setIsLoading(true)
       }
       setError(null)
       const allCurrencies = await getAllCurrencies()
-      const defaultCurr = await getDefaultCurrency()
       setCurrencies(allCurrencies)
-      setDefaultCurrency(defaultCurr)
+      const defaultEntry =
+        allCurrencies.find((currency) => currency.isDefault) || null
+      setDefaultCurrency(defaultEntry)
     } catch (error) {
       console.error('Error loading currencies:', error)
       setError(getFriendlyErrorMessage(error, 'Failed to load currencies.'))
     } finally {
-      if (showLoader) {
+      activeLoadCountRef.current = Math.max(0, activeLoadCountRef.current - 1)
+      if (activeLoadCountRef.current === 0) {
         setIsLoading(false)
+      } else if (showLoader) {
+        setIsLoading(true)
       }
     }
   }
@@ -183,21 +248,18 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const deleteCurrency = async (code: string, options: { skipUsageCheck?: boolean } = {}) => {
     const { skipUsageCheck = false } = options
     const normalizedCode = code.trim().toUpperCase()
+
     const existing = await getCurrency(normalizedCode)
     if (!existing) {
       throw new Error(`Currency "${normalizedCode}" not found`)
     }
 
     if (!skipUsageCheck) {
-      // Check if currency is used in transactions
-      const response = await api.getTransactions({})
-      if (response.success && response.data) {
-        const transactions = response.data.transactions || []
-        const isUsed = transactions.some((t) => t.currency === normalizedCode)
-
-        if (isUsed) {
-          throw new Error(`Cannot delete currency "${normalizedCode}" because it is used in transactions`)
-        }
+      const usageCount = await countTransactions({ currency: normalizedCode })
+      if (usageCount > 0) {
+        throw new Error(
+          `Cannot delete currency "${normalizedCode}" because it is used in ${usageCount} transaction(s)`
+        )
       }
     }
 
@@ -213,6 +275,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
    */
   const setDefaultCurrencyHandler = async (code: string) => {
     const normalizedCode = code.trim().toUpperCase()
+
     const existing = await getCurrency(normalizedCode)
     if (!existing) {
       throw new Error(`Currency "${normalizedCode}" not found`)
@@ -226,13 +289,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
    * Import currencies from transactions
    */
   const importCurrenciesFromTransactions = async (): Promise<{ added: number; skipped: number }> => {
-    // Fetch all transactions
-    const response = await api.getTransactions({})
-    if (!response.success || !response.data) {
-      throw new Error('Failed to fetch transactions')
-    }
-
-    const transactions = response.data.transactions || []
+    const transactions = await fetchTransactions()
     
     // Extract unique currencies from transactions
     const currencySet = new Set<string>()

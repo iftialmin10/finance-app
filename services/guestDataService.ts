@@ -184,6 +184,10 @@ class GuestDataService {
   ): Promise<{ transaction: Transaction }> {
     await this.delay(150)
 
+    if (!data.tags || data.tags.length === 0) {
+      throw new Error('At least one tag is required.')
+    }
+
     const transaction: Transaction = {
       id: faker.string.uuid(),
       userId: this.userId,
@@ -215,6 +219,10 @@ class GuestDataService {
     const existing = this.transactions.get(id)
     if (!existing) {
       throw new Error(`Transaction with id "${id}" not found`)
+    }
+
+    if (data.tags !== undefined && data.tags.length === 0) {
+      throw new Error('At least one tag is required.')
     }
 
     const updated: Transaction = {
@@ -461,6 +469,7 @@ class GuestDataService {
         if (type !== 'expense' && type !== 'income') continue
         const tagsStr = cols[colIndex['tags']] || ''
         const tags = tagsStr ? tagsStr.split(';').map((t) => t.trim()).filter(Boolean) : []
+        if (tags.length === 0) continue // Skip rows without tags
         const amountMinor = parseInt(cols[colIndex['amountMinor']], 10)
         if (Number.isNaN(amountMinor)) continue
 

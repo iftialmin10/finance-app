@@ -1,0 +1,27 @@
+import { prisma } from '@/lib/prisma'
+import {
+  clearSessionCookie,
+  getSessionToken,
+} from '@/app/api/auth/_lib/helpers'
+import { successMessage } from '@/app/api/auth/_lib/responses'
+
+export async function POST() {
+  try {
+    const token = getSessionToken()
+    if (token) {
+      await prisma.user.updateMany({
+        where: { sessionToken: token },
+        data: { sessionToken: null },
+      })
+    }
+
+    clearSessionCookie()
+
+    return successMessage('Logged out successfully.')
+  } catch (error) {
+    console.error('logout error', error)
+    clearSessionCookie()
+    return successMessage('Logged out successfully.')
+  }
+}
+

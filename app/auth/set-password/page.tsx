@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Container,
   Box,
@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material'
 import { useApi } from '@/utils/useApi'
 import { Snackbar } from '@/components/Snackbar'
+import { LoadingButton } from '@/components/LoadingButton'
 
 type PasswordStrength = 'weak' | 'medium' | 'strong'
 
@@ -36,6 +37,7 @@ interface PasswordRequirements {
 
 export default function SetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const api = useApi()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -75,6 +77,9 @@ export default function SetPasswordPage() {
     return Object.values(requirements).every(Boolean)
   }
 
+  const token = searchParams.get('token')
+  const isTokenMissing = !token
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrors({})
@@ -99,9 +104,18 @@ export default function SetPasswordPage() {
       return
     }
 
+    if (isTokenMissing) {
+      setSnackbar({
+        open: true,
+        message: 'Verification link is missing or invalid. Please use the email link to access this page.',
+        severity: 'error',
+      })
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const response = await api.setPassword(password)
+      const response = await api.setPassword(token, password)
       if (response.success) {
         setSnackbar({
           open: true,
@@ -168,6 +182,11 @@ export default function SetPasswordPage() {
 
           {/* Set Password Form */}
           <Box component="form" onSubmit={handleSubmit}>
+            {isTokenMissing && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This page requires a valid verification link. Please open it from your email again to continue.
+              </Alert>
+            )}
             <Typography variant="h5" component="h2" gutterBottom>
               Set Password
             </Typography>
@@ -183,7 +202,7 @@ export default function SetPasswordPage() {
               margin="normal"
               required
               autoComplete="new-password"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isTokenMissing}
             />
 
             <TextField
@@ -197,7 +216,7 @@ export default function SetPasswordPage() {
               margin="normal"
               required
               autoComplete="new-password"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isTokenMissing}
             />
 
             <FormControlLabel
@@ -205,7 +224,7 @@ export default function SetPasswordPage() {
                 <Checkbox
                   checked={showPasswords}
                   onChange={(e) => setShowPasswords(e.target.checked)}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isTokenMissing}
                 />
               }
               label="Show passwords"
@@ -315,7 +334,12 @@ export default function SetPasswordPage() {
               variant="contained"
               sx={{ mt: 3 }}
               loading={isSubmitting}
-              disabled={!allRequirementsMet(password) || password !== confirmPassword}
+              disabled={
+                isTokenMissing ||
+                !allRequirementsMet(password) ||
+                password !== confirmPassword ||
+                isSubmitting
+              }
               size="large"
             >
               Create Account

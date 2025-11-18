@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import type { Tag, TransactionType } from '@/types'
+import type { Tag, TransactionType, Transaction, TransactionQueryParams } from '@/types'
 import {
   getTagsForProfile,
   addTag as addTagDB,
@@ -43,6 +43,57 @@ export function TagProvider({ children }: { children: ReactNode }) {
   const [tags, setTags] = useState<Tag[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const TRANSACTION_PAGE_SIZE = 200
+
+  const countTransactions = async (
+    params: TransactionQueryParams
+  ): Promise<number> => {
+    const response = await api.getTransactions({
+      ...params,
+      limit: 1,
+      offset: 0,
+    })
+    if (!response.success || !response.data) {
+      throw new Error(
+        response.error?.message || 'Failed to count transactions.'
+      )
+    }
+    return (
+      response.data.pagination?.total ??
+      response.data.transactions?.length ??
+      0
+    )
+  }
+
+  const fetchTransactions = async (
+    params: TransactionQueryParams
+  ): Promise<Transaction[]> => {
+    const results: Transaction[] = []
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const response = await api.getTransactions({
+        ...params,
+        limit: TRANSACTION_PAGE_SIZE,
+        offset,
+      })
+      if (!response.success || !response.data) {
+        throw new Error(
+          response.error?.message || 'Failed to load transactions.'
+        )
+      }
+      results.push(...(response.data.transactions ?? []))
+      hasMore = response.data.pagination?.hasMore ?? false
+      offset += TRANSACTION_PAGE_SIZE
+      if (!hasMore) {
+        break
+      }
+    }
+
+    return results
+  }
 
   useEffect(() => {
     if (activeProfile) {
@@ -155,59 +206,44 @@ export function TagProvider({ children }: { children: ReactNode }) {
       throw new Error('No active profile selected')
     }
 
-    // Find the tag
     const tag = tags.find((t) => t.id === id)
     if (!tag) {
       throw new Error('Tag not found')
     }
 
     const trimmedNewName = newName.trim()
-
-    // Validate
     if (trimmedNewName === '') {
       throw new Error('Tag name cannot be empty')
     }
-
     if (trimmedNewName === tag.name) {
       throw new Error('New name must be different from current name')
     }
 
-    // Check for duplicates
     const existingTags = await getTagsForProfile(activeProfile, tag.type)
-    if (existingTags.some((t) => t.id !== id && t.name === trimmedNewName)) {
+    if (
+      existingTags.some(
+        (t) => t.id !== id && t.name.toLowerCase() === trimmedNewName.toLowerCase()
+      )
+    ) {
       throw new Error(
         `A tag with this name already exists for ${tag.type} transactions`
       )
     }
 
-    // Preview rename to get affected count
-    const previewResponse = await api.previewTagRename(tag.name, activeProfile)
-    if (!previewResponse.success) {
-      throw new Error(
-        previewResponse.error?.message || 'Failed to preview tag rename'
-      )
+    const affectedTransactions = await fetchTransactions({
+      profile: activeProfile,
+      tag: tag.name,
+    })
+
+    for (const transaction of affectedTransactions) {
+      const updatedTags =
+        transaction.tags?.map((value) =>
+          value === tag.name ? trimmedNewName : value
+        ) ?? []
+      await api.updateTransaction(transaction.id, { tags: updatedTags })
     }
 
-    const affectedCount = previewResponse.data?.affectedCount || 0
-
-    // If there are affected transactions, update them via API
-    if (affectedCount > 0) {
-      const renameResponse = await api.renameTag(
-        tag.name,
-        trimmedNewName,
-        activeProfile
-      )
-      if (!renameResponse.success) {
-        throw new Error(
-          renameResponse.error?.message || 'Failed to rename tag'
-        )
-      }
-    }
-
-    // Update in IndexedDB
     await updateTagDB(id, { name: trimmedNewName })
-
-    // Reload tags
     await loadTags({ silent: true })
   }
 
@@ -222,17 +258,13 @@ export function TagProvider({ children }: { children: ReactNode }) {
       throw new Error('Tag not found')
     }
 
-    let affectedCount = options?.affectedCount ?? 0
+    let affectedCount = options?.affectedCount ?? null
 
-    if (!options?.skipPreview) {
-      // Preview delete to check if tag is used
-      const previewResponse = await api.previewTagDelete(tag.name, activeProfile)
-      if (!previewResponse.success) {
-        throw new Error(
-          previewResponse.error?.message || 'Failed to preview tag delete'
-        )
-      }
-      affectedCount = previewResponse.data?.affectedCount || 0
+    if (affectedCount === null) {
+      affectedCount = await countTransactions({
+        profile: activeProfile,
+        tag: tag.name,
+      })
     }
 
     // If tag is used in transactions, block deletion
@@ -261,13 +293,7 @@ export function TagProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Get all transactions for active profile
-      const response = await api.getTransactions({ profile: activeProfile })
-      if (!response.success || !response.data) {
-        return { added: 0, skipped: 0 }
-      }
-
-      const transactions = response.data.transactions || []
+      const transactions = await fetchTransactions({ profile: activeProfile })
 
       // Extract unique tags with their types
       const tagMap = new Map<string, TransactionType>()

@@ -34,10 +34,13 @@
 # Install dependencies
 npm install
 
-# Install Prisma
+# Install Prisma (required ORM)
 npm i -D prisma
 npm i @prisma/client
 npx prisma init
+
+# Start local Postgres (Docker)
+docker compose up -d postgres
 
 # Define models in prisma/schema.prisma (see design/data-models.md)
 
@@ -45,9 +48,15 @@ npx prisma init
 npx prisma migrate dev -n init
 npx prisma generate
 
+# Seed baseline data (creates demo user/profiles/tags)
+npm run prisma:seed
+
 # Set up environment variables
 cp .env.example .env.local
-# Edit .env.local with your DATABASE_URL and session/JWT secrets
+# Edit .env.local with:
+#   DATABASE_URL (Neon or Docker Postgres connection string)
+#   SESSION_SECRET (32+ char string)
+#   NEXT_PUBLIC_FORCE_GUEST_MODE (true only for demo builds)
 
 # Run development server
 npm run dev
@@ -60,5 +69,10 @@ npm start
 
 # Optional: Prisma Studio
 npx prisma studio
+
+# Database helpers
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
 ```
 

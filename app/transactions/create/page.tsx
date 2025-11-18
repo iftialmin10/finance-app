@@ -64,6 +64,7 @@ export default function CreateTransactionPage() {
     amount?: string
     currency?: string
     description?: string
+    tags?: string
   }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [snackbar, setSnackbar] = useState<{
@@ -208,6 +209,10 @@ export default function CreateTransactionPage() {
       newErrors.description = 'Description is required'
     }
 
+    if (selectedTags.length === 0) {
+      newErrors.tags = 'At least one tag is required'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -217,6 +222,7 @@ export default function CreateTransactionPage() {
     amount > 0 &&
     !!currency &&
     !!description.trim() &&
+    selectedTags.length > 0 &&
     Object.values(errors).every((error) => !error)
 
   const handleSubmit = async () => {
@@ -422,25 +428,35 @@ export default function CreateTransactionPage() {
               {/* Tags */}
               <Box sx={{ mb: 3 }}>
                 <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Tags <Typography component="span" variant="caption" color="text.secondary">(optional)</Typography>
+                  Tags <Typography component="span" variant="caption" color="error">*</Typography>
                 </Typography>
                 {availableTags.length === 0 ? (
-                  <Alert severity="info" sx={{ mt: 1 }}>
-                    No {type} tags available yet. You can create tags later from the Tags page.
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    No {type} tags available yet. Please create at least one tag from the Tags page before creating a transaction.
                   </Alert>
                 ) : (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                    {availableTags.map((tag) => (
-                      <Chip
-                        key={tag.id}
-                        label={tag.name}
-                        onClick={() => handleTagToggle(tag.id)}
-                        color={selectedTags.includes(tag.id) ? 'primary' : 'default'}
-                        variant={selectedTags.includes(tag.id) ? 'filled' : 'outlined'}
-                        sx={{ cursor: 'pointer' }}
-                      />
-                    ))}
-                  </Box>
+                  <>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                      {availableTags.map((tag) => (
+                        <Chip
+                          key={tag.id}
+                          label={tag.name}
+                          onClick={() => {
+                            handleTagToggle(tag.id)
+                            setErrors((prev) => ({ ...prev, tags: undefined }))
+                          }}
+                          color={selectedTags.includes(tag.id) ? 'primary' : 'default'}
+                          variant={selectedTags.includes(tag.id) ? 'filled' : 'outlined'}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Box>
+                    {errors.tags && (
+                      <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
+                        {errors.tags}
+                      </Typography>
+                    )}
+                  </>
                 )}
               </Box>
 
