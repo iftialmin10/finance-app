@@ -7,7 +7,7 @@ import { TagProvider } from '@/contexts/TagContext'
 import { CurrencyProvider } from '@/contexts/CurrencyContext'
 import { AppProvider } from '@/contexts/AppContext'
 import { GlobalProgressBar } from './GlobalProgressBar'
-import { GuestModeIndicator } from './GuestModeIndicator'
+import { DevPanel } from './DevPanel'
 import { StartupRedirect } from './StartupRedirect'
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -19,7 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <CurrencyProvider>
               <AppProvider>
                 <GlobalProgressBar />
-                <GuestModeIndicator />
+                <DevPanel />
                 <StartupRedirect>
                   {children}
                 </StartupRedirect>

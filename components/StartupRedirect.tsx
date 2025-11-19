@@ -56,17 +56,13 @@ export function StartupRedirect({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // If authenticated user has no profiles, redirect to setup
-        // This only happens after successful sign-in
-        if (user && profiles.length === 0) {
-          router.replace('/setup')
-          return
-        }
-
         // If profiles exist but no active profile, set first profile as active
         if (profiles.length > 0 && !activeProfile) {
           await switchProfile(profiles[0].name)
         }
+
+        // Note: We don't redirect to setup if no profiles exist
+        // Users can access the dashboard and go to setup manually if needed
 
         // If we're on the root path and have profiles, we're already on dashboard
         // No redirect needed

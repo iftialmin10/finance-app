@@ -119,12 +119,12 @@ export default function SetPasswordPage() {
       if (response.success) {
         setSnackbar({
           open: true,
-          message: 'Password set successfully! Redirecting to setup...',
+          message: 'Password set successfully! Redirecting to dashboard...',
           severity: 'success',
         })
-        // Redirect to setup page after 1.5 seconds
+        // Redirect to dashboard after 1.5 seconds
         setTimeout(() => {
-          router.push('/setup')
+          router.push('/')
         }, 1500)
       } else {
         const errorMessage =

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as ForgotPasswordBody
     const email = body.email?.toLowerCase().trim()
 
-    if (!isValidEmail(email)) {
+    if (!email || !isValidEmail(email)) {
       return errorResponse('Please provide a valid email address.', 400)
     }
 

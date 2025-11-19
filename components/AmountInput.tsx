@@ -1,7 +1,7 @@
 'use client'
 
 import { TextField, InputAdornment } from '@mui/material'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface AmountInputProps {
   label: string
@@ -47,25 +47,48 @@ export function AmountInput({
   }
 
   const [displayValue, setDisplayValue] = useState<string>(minorToDecimal(value))
+  const isUserTypingRef = useRef(false)
+  const lastPropValueRef = useRef(value)
 
-  // Update display value when prop value changes
+  // Only update display value when prop value changes externally (e.g., form reset)
+  // Don't update while user is typing
   useEffect(() => {
-    setDisplayValue(minorToDecimal(value))
+    if (!isUserTypingRef.current && value !== lastPropValueRef.current) {
+      setDisplayValue(minorToDecimal(value))
+      lastPropValueRef.current = value
+    }
   }, [value])
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = event.target.value
     setDisplayValue(inputValue)
     
+    // Mark that user is typing
+    isUserTypingRef.current = true
+    
     // Convert to minor units and call onChange
     const minor = decimalToMinor(inputValue)
+    lastPropValueRef.current = minor
     onChange(minor)
+    
+    // Reset typing flag after a brief moment
+    setTimeout(() => {
+      isUserTypingRef.current = false
+    }, 100)
   }
 
   const handleBlur = () => {
-    // Format on blur
+    // Format on blur only - this is when user finishes typing
     const minor = decimalToMinor(displayValue)
-    setDisplayValue(minorToDecimal(minor))
+    const formatted = minorToDecimal(minor)
+    setDisplayValue(formatted)
+    lastPropValueRef.current = minor
+    isUserTypingRef.current = false
+    
+    // Update parent if value changed during formatting
+    if (minor !== value) {
+      onChange(minor)
+    }
   }
 
   return (

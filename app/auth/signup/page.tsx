@@ -7,10 +7,8 @@ import {
   Box,
   Typography,
   TextField,
-  Button,
   Link,
   Alert,
-  Divider,
   Paper,
 } from '@mui/material'
 import { CheckCircle as CheckCircleIcon } from '@mui/icons-material'
@@ -26,7 +24,7 @@ const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
 
 export default function SignUpPage() {
   const router = useRouter()
-  const { enterGuestMode, isGuestMode } = useAuth()
+  const { isGuestMode } = useAuth()
   const api = useApi()
   const [email, setEmail] = useState('')
   const [emailSent, setEmailSent] = useState(false)
@@ -114,24 +112,6 @@ export default function SignUpPage() {
       })
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleGuestMode = async () => {
-    try {
-      await enterGuestMode()
-      setSnackbar({
-        open: true,
-        message: 'Entered guest mode',
-        severity: 'success',
-      })
-      // Redirect is handled by enterGuestMode function
-    } catch (error: any) {
-      setSnackbar({
-        open: true,
-        message: error.message || 'Failed to enter guest mode',
-        severity: 'error',
-      })
     }
   }
 
@@ -291,31 +271,6 @@ export default function SignUpPage() {
             >
               Send Verification Link
             </LoadingButton>
-          </Box>
-
-          {/* Divider */}
-          <Divider sx={{ my: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              OR
-            </Typography>
-          </Divider>
-
-          {/* Guest Mode Button */}
-          <Box sx={{ mb: 3 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              color="secondary"
-              size="large"
-              onClick={handleGuestMode}
-              disabled={isSubmitting}
-              sx={{ py: 1.5 }}
-            >
-              Continue as Guest
-            </Button>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
-              (Explore with demo data)
-            </Typography>
           </Box>
 
           {/* Sign In Link */}

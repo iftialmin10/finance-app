@@ -1,0 +1,236 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Box,
+  Fab,
+  Paper,
+  IconButton,
+  Tooltip,
+  Slide,
+  Button,
+} from '@mui/material'
+import {
+  KeyboardArrowUp as ArrowUpIcon,
+  KeyboardArrowDown as ArrowDownIcon,
+  Close as CloseIcon,
+  Person as PersonIcon,
+} from '@mui/icons-material'
+import { useAuth } from '@/contexts/AuthContext'
+import { LoadingButton } from './LoadingButton'
+import { Snackbar } from './Snackbar'
+import { clearAllData } from '@/utils/indexedDB'
+import { guestDataService } from '@/services/guestDataService'
+
+export function DevPanel() {
+  const router = useRouter()
+  const { isGuestMode, enterGuestMode, exitGuestMode } = useAuth()
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [isHidden, setIsHidden] = useState(false)
+  const [isHardResetting, setIsHardResetting] = useState(false)
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean
+    message: string
+    severity: 'success' | 'error' | 'info' | 'warning'
+  }>({ open: false, message: '', severity: 'info' })
+
+  const handleToggleExpand = () => {
+    setIsExpanded(!isExpanded)
+  }
+
+  const handleHide = () => {
+    setIsExpanded(false)
+    setIsHidden(true)
+  }
+
+  const handleShow = () => {
+    setIsHidden(false)
+  }
+
+  const handleGuestModeToggle = async () => {
+    try {
+      if (isGuestMode) {
+        await exitGuestMode()
+        setSnackbar({
+          open: true,
+          message: 'Exited Guest Mode',
+          severity: 'success',
+        })
+      } else {
+        await enterGuestMode()
+        setSnackbar({
+          open: true,
+          message: 'Entered Guest Mode',
+          severity: 'success',
+        })
+      }
+    } catch (error: any) {
+      console.error('Error toggling guest mode:', error)
+      setSnackbar({
+        open: true,
+        message: error?.message || 'Failed to toggle guest mode',
+        severity: 'error',
+      })
+    }
+  }
+
+  const handleHardReset = async () => {
+    if (isHardResetting) {
+      return
+    }
+    setIsHardResetting(true)
+    try {
+      await clearAllData()
+      guestDataService.reset()
+      try {
+        sessionStorage.clear()
+      } catch (error) {
+        console.warn('Unable to clear sessionStorage during hard reset:', error)
+      }
+      try {
+        localStorage.clear()
+      } catch (error) {
+        console.warn('Unable to clear localStorage during hard reset:', error)
+      }
+      setSnackbar({
+        open: true,
+        message: 'All local data cleared successfully.',
+        severity: 'success',
+      })
+      router.refresh()
+    } catch (error: any) {
+      console.error('Error performing hard reset:', error)
+      setSnackbar({
+        open: true,
+        message: error?.message || 'Failed to clear local data.',
+        severity: 'error',
+      })
+    } finally {
+      setIsHardResetting(false)
+    }
+  }
+
+  if (isHidden) {
+    return (
+      <Fab
+        color="default"
+        size="small"
+        onClick={handleShow}
+        sx={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 1000,
+        }}
+        aria-label="Show Dev Panel"
+      >
+        <ArrowUpIcon />
+      </Fab>
+    )
+  }
+
+  return (
+    <>
+      {/* Floating toggle button */}
+      <Fab
+        color={isExpanded ? 'secondary' : 'default'}
+        size="small"
+        onClick={handleToggleExpand}
+        sx={{
+          position: 'fixed',
+          bottom: isExpanded ? 280 : 24,
+          right: 24,
+          zIndex: 1001,
+          transition: 'bottom 0.3s ease-in-out',
+        }}
+        aria-label={isExpanded ? 'Collapse Dev Panel' : 'Expand Dev Panel'}
+      >
+        {isExpanded ? <ArrowDownIcon /> : <ArrowUpIcon />}
+      </Fab>
+
+      {/* Expandable panel */}
+      <Slide direction="up" in={isExpanded} mountOnEnter unmountOnExit>
+        <Paper
+          elevation={8}
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            p: 2,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            maxHeight: '300px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Header */}
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2,
+            }}
+          >
+            <Box sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+              Developer Panel
+            </Box>
+            <Tooltip title="Hide Panel">
+              <IconButton size="small" onClick={handleHide}>
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* Content */}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 2,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            {/* Guest Mode Toggle */}
+            <Button
+              variant={isGuestMode ? 'contained' : 'outlined'}
+              color={isGuestMode ? 'secondary' : 'primary'}
+              size="medium"
+              onClick={handleGuestModeToggle}
+              startIcon={<PersonIcon />}
+              aria-label={
+                isGuestMode ? 'Exit Guest Mode' : 'Enter Guest Mode'
+              }
+            >
+              {isGuestMode ? 'Exit Guest Mode' : 'Enter Guest Mode'}
+            </Button>
+
+            {/* Hard Reset Button */}
+            <LoadingButton
+              variant="outlined"
+              color="error"
+              size="medium"
+              onClick={handleHardReset}
+              loading={isHardResetting}
+            >
+              Hard Reset
+            </LoadingButton>
+          </Box>
+        </Paper>
+      </Slide>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      />
+    </>
+  )
+}
+

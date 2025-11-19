@@ -19,6 +19,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - finance-app-network
 
   mailhog:
     image: mailhog/mailhog:latest
@@ -27,7 +29,63 @@ services:
     ports:
       - '1025:1025' # SMTP
       - '8025:8025' # Web UI
+    networks:
+      - finance-app-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: finance_app_nextjs
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://finance_user:finance_pass@postgres:5432/finance_app?schema=public
+      - PORT=3000
+      - WATCHPACK_POLLING=true
+      - EMAIL_PROVIDER=mailhog
+      - MAILHOG_HOST=mailhog
+      - MAILHOG_PORT=1025
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - finance-app-network
+
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finance_app_nextjs_prod
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://finance_user:finance_pass@postgres:5432/finance_app?schema=public
+      - PORT=3000
+      - EMAIL_PROVIDER=mailhog
+      - MAILHOG_HOST=mailhog
+      - MAILHOG_PORT=1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - finance-app-network
+    profiles:
+      - prod
 
 volumes:
   postgres-data:
+
+networks:
+  finance-app-network:
+    driver: bridge
 

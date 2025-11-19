@@ -431,7 +431,19 @@ export default function CreateTransactionPage() {
                   Tags <Typography component="span" variant="caption" color="error">*</Typography>
                 </Typography>
                 {availableTags.length === 0 ? (
-                  <Alert severity="warning" sx={{ mt: 1 }}>
+                  <Alert 
+                    severity="warning" 
+                    sx={{ mt: 1 }}
+                    action={
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => router.push('/tags')}
+                      >
+                        Go to Tags
+                      </Button>
+                    }
+                  >
                     No {type} tags available yet. Please create at least one tag from the Tags page before creating a transaction.
                   </Alert>
                 ) : (

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Container,
   Box,
@@ -16,18 +15,14 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Snackbar } from '@/components/Snackbar'
 import { LoadingButton } from '@/components/LoadingButton'
 import { validateEmail, validateRequired } from '@/utils/validation'
-import { clearAllData } from '@/utils/indexedDB'
-import { guestDataService } from '@/services/guestDataService'
 
 export default function SignInPage() {
-  const router = useRouter()
   const { signIn, isLoading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isHardResetting, setIsHardResetting] = useState(false)
   const [snackbar, setSnackbar] = useState<{
     open: boolean
     message: string
@@ -79,42 +74,6 @@ export default function SignInPage() {
       })
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleHardReset = async () => {
-    if (isHardResetting) {
-      return
-    }
-    setIsHardResetting(true)
-    try {
-      await clearAllData()
-      guestDataService.reset()
-      try {
-        sessionStorage.clear()
-      } catch (error) {
-        console.warn('Unable to clear sessionStorage during hard reset:', error)
-      }
-      try {
-        localStorage.clear()
-      } catch (error) {
-        console.warn('Unable to clear localStorage during hard reset:', error)
-      }
-      setSnackbar({
-        open: true,
-        message: 'All local data cleared successfully.',
-        severity: 'success',
-      })
-      router.refresh()
-    } catch (error: any) {
-      console.error('Error performing hard reset:', error)
-      setSnackbar({
-        open: true,
-        message: error?.message || 'Failed to clear local data.',
-        severity: 'error',
-      })
-    } finally {
-      setIsHardResetting(false)
     }
   }
 
@@ -221,29 +180,16 @@ export default function SignInPage() {
           <Box
             sx={{
               display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              alignItems: { xs: 'stretch', sm: 'center' },
-              justifyContent: 'space-between',
-              textAlign: { xs: 'center', sm: 'left' },
-              gap: 2,
+              justifyContent: 'center',
+              textAlign: 'center',
             }}
           >
-            <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
+            <Typography variant="body2" color="text.secondary">
               Don&apos;t have an account?{' '}
               <Link href="/auth/signup" sx={{ textDecoration: 'none' }}>
                 Sign Up
               </Link>
             </Typography>
-            <LoadingButton
-              variant="outlined"
-              color="error"
-              size="small"
-              onClick={handleHardReset}
-              loading={isHardResetting}
-              sx={{ alignSelf: { xs: 'center', sm: 'auto' } }}
-            >
-              Hard Reset
-            </LoadingButton>
           </Box>
         </Paper>
       </Box>

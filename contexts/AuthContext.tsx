@@ -15,7 +15,6 @@ import {
   getGuestModeState,
   setGuestModeState,
   clearGuestModeState,
-  getAllProfiles,
   clearAllData,
 } from '@/utils/indexedDB'
 import { useApi } from '@/utils/useApi'
@@ -192,6 +191,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const response = await api.login(email, password)
       if (response.success && response.data) {
+        // Clear all IndexedDB data at the start of sign-in to ensure data isolation
+        // This prevents one user's setup data from being visible to another user
+        // on the same browser/device
+        await clearAllData()
+        
+        // Reset guest data service (in-memory data)
+        guestDataService.reset()
+        
+        // Clear browser storage to ensure clean state
+        await clearBrowserStorage()
+        
         setUser({
           id: response.data.user.id,
           email: response.data.user.email,
@@ -208,18 +218,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await clearGuestModeState()
         }
         
-        // Check if profiles exist - if not, redirect to setup
-        try {
-          const profiles = await getAllProfiles()
-          if (profiles.length === 0) {
-            router.push('/setup')
-          } else {
-            router.push('/')
-          }
-        } catch (profileError) {
-          // If we can't check profiles, just go to root and let StartupRedirect handle it
-          router.push('/')
-        }
+        // Redirect to dashboard after sign-in
+        // Users can access setup page manually if needed
+        router.push('/')
       } else {
         const errorMessage =
           !response.success && 'error' in response
