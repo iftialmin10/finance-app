@@ -23,7 +23,23 @@ interface ExpenseBreakdownPieProps {
   height?: number
 }
 
-const DEFAULT_COLORS = ['#e53935', '#d32f2f', '#ef5350', '#f44336', '#ff7043', '#ff8a65']
+/**
+ * Generates a random color using HSL color space
+ * Colors are absolutely random each time
+ */
+function generateRandomColor(): string {
+  // Generate random HSL values
+  // Hue: 0-360 (full color spectrum)
+  const hue = Math.random() * 360
+  
+  // Saturation: 60-85% (vibrant colors)
+  const saturation = 60 + Math.random() * 25
+  
+  // Lightness: 50-70% (good visibility, avoid too dark/light)
+  const lightness = 50 + Math.random() * 20
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
+}
 
 export function ExpenseBreakdownPie({
   title = 'Expense Breakdown',
@@ -34,9 +50,9 @@ export function ExpenseBreakdownPie({
 
   const data = useMemo(
     () =>
-      items.map((item, idx) => ({
+      items.map((item) => ({
         ...item,
-        color: item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+        color: item.color || generateRandomColor(),
       })),
     [items]
   )
